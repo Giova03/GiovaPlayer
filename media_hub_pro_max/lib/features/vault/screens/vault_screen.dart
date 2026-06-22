@@ -1,10 +1,11 @@
+// GiovaPlayer - Coffre-fort avec PIN et biomimetrie
+// Contact: giobamos03@gmail.com | WhatsApp: +22670698070
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/providers/app_providers.dart';
+import '../../../core/constants/app_constants.dart';
 
-/// ─── ÉCRAN COFFRE-FORT AES-256-GCM ───
-/// Features: Double PIN + empreinte + visage + clé USB OTG,
-/// Vault decoy + Panic PIN, Anti-screenshot + flou auto + photo intrus + GPS,
-/// Notes chiffrées + mots de passe + scanner carte bancaire
+/// Ecran du coffre-fort GiovaPlayer
 class VaultScreen extends ConsumerStatefulWidget {
   const VaultScreen({super.key});
 
@@ -13,619 +14,416 @@ class VaultScreen extends ConsumerStatefulWidget {
 }
 
 class _VaultScreenState extends ConsumerState<VaultScreen> {
+  String _pin = '';
   bool _isUnlocked = false;
-  bool _showDecoyVault = false;
-  int _failedAttempts = 0;
+  bool _isPanicMode = false;
+  int _attempts = 0;
+  String? _error;
+
+  static const String _panicPin = AppConstants.panicPin;
+  static const int _maxAttempts = AppConstants.maxPinAttempts;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     if (!_isUnlocked) {
-      return _VaultLockScreen(
-        onUnlock: _unlock,
-        onPanicPin: _handlePanicPin,
-        onDecoyPin: _handleDecoyPin,
-      );
+      return _buildPinLockScreen(cs);
     }
-
-    if (_showDecoyVault) {
-      return _DecoyVaultContent(onLock: _lock);
+    if (_isPanicMode) {
+      return _buildDecoyVault(cs);
     }
-
-    return _VaultMainContent(onLock: _lock);
+    return _buildMainVault(cs);
   }
 
-  /// Déverrouillage réussi
-  void _unlock() {
-    setState(() {
-      _isUnlocked = true;
-      _showDecoyVault = false;
-      _failedAttempts = 0;
-    });
-  }
-
-  /// Panic PIN — supprime tout ou ouvre dossier fake
-  void _handlePanicPin() {
-    setState(() {
-      _isUnlocked = true;
-      _showDecoyVault = true;
-    });
-  }
-
-  /// Decoy PIN — ouvre le vault leurre
-  void _handleDecoyPin() {
-    setState(() {
-      _isUnlocked = true;
-      _showDecoyVault = true;
-    });
-  }
-
-  /// Reverrouillage
-  void _lock() {
-    setState(() {
-      _isUnlocked = false;
-      _showDecoyVault = false;
-    });
-  }
-}
-
-/// ─── ÉCRAN DE DÉVERROUILLAGE ───
-class _VaultLockScreen extends StatefulWidget {
-  final VoidCallback onUnlock;
-  final VoidCallback onPanicPin;
-  final VoidCallback onDecoyPin;
-
-  const _VaultLockScreen({
-    required this.onUnlock,
-    required this.onPanicPin,
-    required this.onDecoyPin,
-  });
-
-  @override
-  State<_VaultLockScreen> createState() => _VaultLockScreenState();
-}
-
-class _VaultLockScreenState extends State<_VaultLockScreen> {
-  String _pin = '';
-  bool _useBiometrics = true;
-
-  @override
-  void initState() {
-    super.initState();
-    /// Auto-tenter biométrie au lancement
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _tryBiometrics();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
+  /// Ecran de verrouillage PIN
+  Widget _buildPinLockScreen(ColorScheme cs) {
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            const Spacer(),
-
-            /// Icône verrouillage
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: cs.primaryContainer,
-              ),
-              child: Icon(Icons.lock, size: 40, color: cs.primary),
-            ),
-            const SizedBox(height: 24),
-
-            /// Titre
-            Text('Coffre-fort', style: Theme.of(context).textTheme.headlineMedium),
-            const SizedBox(height: 8),
-            Text(
-              'Entrez votre PIN pour déverrouiller',
-              style: TextStyle(color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 32),
-
-            /// Indicateurs PIN (4 cercles)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(4, (i) => Container(
-                width: 16,
-                height: 16,
-                margin: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: i < _pin.length ? cs.primary : cs.surfaceContainerHighest,
-                  border: Border.all(
-                    color: i < _pin.length ? cs.primary : cs.outline,
-                  ),
-                ),
-              )),
-            ),
-            const SizedBox(height: 32),
-
-            /// Clavier numérique
-            SizedBox(
-              width: 280,
-              child: GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  childAspectRatio: 1.5,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                ),
-                itemCount: 12,
-                itemBuilder: (context, index) {
-                  if (index == 9) return const SizedBox();
-                  if (index == 11) {
-                    return _NumButton(
-                      icon: Icons.backspace,
-                      onTap: _deleteDigit,
-                    );
-                  }
-                  if (index == 10) {
-                    return _NumButton(
-                      digit: '0',
-                      onTap: () => _addDigit('0'),
-                    );
-                  }
-                  final digit = (index + 1).toString();
-                  return _NumButton(
-                    digit: digit,
-                    onTap: () => _addDigit(digit),
-                  );
-                },
-              ),
-            ),
-
-            const Spacer(),
-
-            /// Options biométrie
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.fingerprint, size: 32),
-                  onPressed: _tryBiometrics,
-                  tooltip: 'Empreinte digitale',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.face, size: 32),
-                  onPressed: _tryFaceUnlock,
-                  tooltip: 'Reconnaissance faciale',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.usb, size: 32),
-                  onPressed: _tryUsbKey,
-                  tooltip: 'Clé USB OTG',
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock_outline, size: 64, color: cs.primary),
+              const SizedBox(height: 16),
+              Text('Coffre-fort GiovaPlayer',
+                  style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 8),
+              Text('Entrez votre code PIN a 4 chiffres',
+                  style: TextStyle(color: cs.onSurfaceVariant)),
+              const SizedBox(height: 24),
+              _buildPinDots(cs),
+              const SizedBox(height: 8),
+              if (_error != null)
+                Text(_error!, style: TextStyle(color: cs.error, fontSize: 13)),
+              const SizedBox(height: 16),
+              _buildNumericKeypad(cs),
+              const SizedBox(height: 16),
+              _buildBiometricButtons(cs),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  void _addDigit(String digit) {
+  /// Indicateurs de points PIN
+  Widget _buildPinDots(ColorScheme cs) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(4, (i) {
+        final filled = i < _pin.length;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 8),
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: filled ? cs.primary : cs.surfaceContainerHighest,
+            border: Border.all(
+              color: filled ? cs.primary : cs.outline,
+              width: 2,
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  /// Clavier numerique pour le PIN
+  Widget _buildNumericKeypad(ColorScheme cs) {
+    final keys = [
+      ['1', '2', '3'],
+      ['4', '5', '6'],
+      ['7', '8', '9'],
+      ['', '0', 'del'],
+    ];
+
+    return Column(
+      children: keys.map((row) {
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: row.map((key) {
+            if (key.isEmpty) return const SizedBox(width: 72, height: 72);
+            if (key == 'del') {
+              return _buildKeypadButton(
+                Icons.backspace_outlined, cs, () => _onDelKey(),
+                isIcon: true,
+              );
+            }
+            return _buildKeypadButton(key, cs, () => _onDigitKey(key));
+          }).toList(),
+        );
+      }).toList(),
+    );
+  }
+
+  /// Bouton individuel du clavier
+  Widget _buildKeypadButton(dynamic label, ColorScheme cs, VoidCallback onTap,
+      {bool isIcon = false}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(36),
+      child: Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: cs.surfaceContainerHighest,
+        ),
+        child: Center(
+          child: isIcon
+              ? Icon(label, color: cs.onSurface, size: 24)
+              : Text(label.toString(),
+                  style: Theme.of(context).textTheme.headlineSmall),
+        ),
+      ),
+    );
+  }
+
+  /// Boutons biométriques
+  Widget _buildBiometricButtons(ColorScheme cs) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildBioButton(Icons.fingerprint, 'Empreinte', cs),
+        const SizedBox(width: 16),
+        _buildBioButton(Icons.face, 'Visage', cs),
+        const SizedBox(width: 16),
+        _buildBioButton(Icons.usb, 'Cle USB', cs),
+      ],
+    );
+  }
+
+  /// Bouton biométrique individuel
+  Widget _buildBioButton(IconData icon, String label, ColorScheme cs) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          onPressed: () {
+            // Simulation de biomimetrie - en production utiliser local_auth
+            _unlock();
+          },
+          icon: Icon(icon, size: 28, color: cs.primary),
+          style: IconButton.styleFrom(
+            backgroundColor: cs.primaryContainer,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(label, style: Theme.of(context).textTheme.labelSmall),
+      ],
+    );
+  }
+
+  /// Gestion de la touche chiffre
+  void _onDigitKey(String digit) {
     if (_pin.length >= 4) return;
-    setState(() => _pin += digit);
+    setState(() {
+      _pin += digit;
+      _error = null;
+    });
     if (_pin.length == 4) _validatePin();
   }
 
-  void _deleteDigit() {
+  /// Gestion de la touche effacer
+  void _onDelKey() {
     if (_pin.isEmpty) return;
-    setState(() => _pin = _pin.substring(0, _pin.length - 1));
+    setState(() {
+      _pin = _pin.substring(0, _pin.length - 1);
+      _error = null;
+    });
   }
 
-  /// Validation du PIN
+  /// Validation du PIN saisi
   void _validatePin() {
-    // En production : vérifier via libsodium
-    // Panic PIN = "9999" par exemple
-    if (_pin == '9999') {
-      widget.onPanicPin();
-    } else if (_pin == '0000') {
-      widget.onDecoyPin();
-    } else if (_pin == '1234') {
-      /// PIN correct (demo)
-      widget.onUnlock();
+    if (_pin == _panicPin) {
+      setState(() {
+        _isUnlocked = true;
+        _isPanicMode = true;
+      });
+      return;
+    }
+    // En production, comparer avec le PIN hashé stocké
+    if (_pin == AppConstants.defaultVaultPin) {
+      _unlock();
     } else {
-      /// PIN incorrect
-      setState(() => _pin = '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('PIN incorrect'),
-          backgroundColor: Colors.red,
-        ),
-      );
-
-      /// Photo intrus après 3 échecs
-      if (mounted) {
-        /// TODO: _captureIntruderPhoto();
-      }
+      _attempts++;
+      setState(() {
+        _pin = '';
+        if (_attempts >= _maxAttempts) {
+          _error = 'Trop de tentatives. Reessayez plus tard.';
+        } else {
+          _error = 'PIN incorrect (${_maxAttempts - _attempts} essais restants)';
+        }
+      });
     }
   }
 
-  /// Tentative biométrie
-  void _tryBiometrics() {
-    // En production : local_auth
-    // Simulé : déverrouillage direct pour la démo
+  /// Debloque le coffre-fort
+  void _unlock() {
+    setState(() {
+      _isUnlocked = true;
+      _isPanicMode = false;
+      _pin = '';
+      _attempts = 0;
+    });
+    ref.read(vaultUnlockedProvider.notifier).state = true;
   }
 
-  void _tryFaceUnlock() {
-    // En production : local_auth avec Face ID
-  }
-
-  void _tryUsbKey() {
-    // En production : USB OTG + clé physique
-  }
-}
-
-class _NumButton extends StatelessWidget {
-  final String? digit;
-  final IconData? icon;
-  final VoidCallback onTap;
-
-  const _NumButton({this.digit, this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(28),
-      child: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        ),
-        child: Center(
-          child: digit != null
-              ? Text(digit!, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w500))
-              : Icon(icon, size: 24),
-        ),
-      ),
-    );
-  }
-}
-
-/// ─── CONTENU PRINCIPAL DU COFFRE ───
-class _VaultMainContent extends StatelessWidget {
-  final VoidCallback onLock;
-
-  const _VaultMainContent({required this.onLock});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
+  /// Contenu principal du coffre-fort
+  Widget _buildMainVault(ColorScheme cs) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Coffre-fort'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.lock_open),
-            onPressed: onLock,
+            onPressed: () {
+              setState(() {
+                _isUnlocked = false;
+                _pin = '';
+              });
+              ref.read(vaultUnlockedProvider.notifier).state = false;
+            },
+            icon: const Icon(Icons.lock_outline),
             tooltip: 'Verrouiller',
           ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _showAddMenu(context),
-          ),
         ],
       ),
-      body: ListView(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        children: [
-          /// Statistiques coffre
-          _VaultStatsBar(),
-          const SizedBox(height: 16),
-
-          /// Sécurité active
-          Card(
-            color: cs.tertiaryContainer,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(Icons.shield, color: cs.onTertiaryContainer),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Sécurité maximale',
-                            style: TextStyle(
-                              color: cs.onTertiaryContainer,
-                              fontWeight: FontWeight.w600)),
-                        Text(
-                          'AES-256-GCM • Anti-screenshot actif • Flou auto',
-                          style: TextStyle(
-                            color: cs.onTertiaryContainer.withOpacity(0.7),
-                            fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          /// Sections du coffre
-          Text('Contenu', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-
-          _VaultSection(
-            icon: Icons.photo,
-            title: 'Photos chiffrées',
-            count: 24,
-            onTap: () {},
-          ),
-          _VaultSection(
-            icon: Icons.videocam,
-            title: 'Vidéos chiffrées',
-            count: 3,
-            onTap: () {},
-          ),
-          _VaultSection(
-            icon: Icons.note,
-            title: 'Notes chiffrées',
-            count: 12,
-            onTap: () {},
-          ),
-          _VaultSection(
-            icon: Icons.password,
-            title: 'Mots de passe',
-            count: 45,
-            onTap: () {},
-          ),
-          _VaultSection(
-            icon: Icons.credit_card,
-            title: 'Cartes bancaires',
-            count: 2,
-            onTap: () {},
-          ),
-          _VaultSection(
-            icon: Icons.folder,
-            title: 'Fichiers divers',
-            count: 8,
-            onTap: () {},
-          ),
-
-          const SizedBox(height: 16),
-          Text('Sécurité', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-
-          SwitchListTile(
-            title: const Text('Anti-screenshot'),
-            subtitle: const Text('Bloque les captures d\'écran'),
-            value: true,
-            onChanged: (_) {},
-            secondary: const Icon(Icons.screenshot),
-          ),
-          SwitchListTile(
-            title: const Text('Flou auto si app switch'),
-            subtitle: const Text('Floute l\'app dans le sélecteur récent'),
-            value: true,
-            onChanged: (_) {},
-            secondary: const Icon(Icons.blur_on),
-          ),
-          SwitchListTile(
-            title: const Text('Photo intrus'),
-            subtitle: const Text('Photo + GPS après 3 PIN échoués'),
-            value: true,
-            onChanged: (_) {},
-            secondary: const Icon(Icons.camera_alt),
-          ),
-
-          const SizedBox(height: 16),
-
-          /// Panic PIN info
-          Card(
-            color: cs.errorContainer,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(Icons.warning, color: cs.onErrorContainer),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Panic PIN : entrez le PIN d\'urgence pour supprimer '
-                      'toutes les données du coffre ou ouvrir le vault leurre.',
-                      style: TextStyle(
-                        color: cs.onErrorContainer,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildStatsBar(cs),
+            const SizedBox(height: 16),
+            _buildSecurityCard(cs),
+            const SizedBox(height: 16),
+            _buildSectionsList(cs),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {},
+        child: const Icon(Icons.add),
       ),
     );
   }
 
-  void _showAddMenu(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => ListView(
-        padding: const EdgeInsets.all(24),
-        shrinkWrap: true,
-        children: [
-          Text('Ajouter au coffre', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 16),
-          ListTile(
-            leading: const Icon(Icons.photo),
-            title: const Text('Photos'),
-            subtitle: const Text('Chiffrer et déplacer des photos'),
-            onTap: () {},
-          ),
-          ListTile(
-            leading: const Icon(Icons.note_add),
-            title: const Text('Note chiffrée'),
-            subtitle: const Text('Créer une note sécurisée'),
-            onTap: () {},
-          ),
-          ListTile(
-            leading: const Icon(Icons.password),
-            title: const Text('Mot de passe'),
-            subtitle: const Text('Ajouter un identifiant'),
-            onTap: () {},
-          ),
-          ListTile(
-            leading: const Icon(Icons.credit_card),
-            title: const Text('Carte bancaire'),
-            subtitle: const Text('Scanner ou saisir manuellement'),
-            onTap: () {},
-          ),
-          ListTile(
-            leading: const Icon(Icons.insert_drive_file),
-            title: const Text('Fichier'),
-            subtitle: const Text('Chiffrer n\'importe quel fichier'),
-            onTap: () {},
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// ─── STATS BAR ───
-class _VaultStatsBar extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  /// Barre de statistiques du coffre
+  Widget _buildStatsBar(ColorScheme cs) {
     return Row(
       children: [
         Expanded(
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  Text('94', style: Theme.of(context).textTheme.headlineSmall),
-                  Text('Éléments', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-                ],
-              ),
-            ),
-          ),
+          child: _buildStatCard(cs, Icons.folder, '0', 'Fichiers'),
         ),
+        const SizedBox(width: 8),
         Expanded(
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  Text('2.4 GB', style: Theme.of(context).textTheme.headlineSmall),
-                  Text('Chiffré', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-                ],
-              ),
-            ),
-          ),
+          child: _buildStatCard(cs, Icons.storage, '0 Mo', 'Utilise'),
         ),
+        const SizedBox(width: 8),
         Expanded(
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  Text('0', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.green)),
-                  Text('Intrusions', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-                ],
-              ),
-            ),
-          ),
+          child: _buildStatCard(cs, Icons.security, 'AES-256', 'Chiffrement'),
         ),
       ],
     );
   }
-}
 
-/// ─── SECTION DU COFFRE ───
-class _VaultSection extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final int count;
-  final VoidCallback onTap;
-
-  const _VaultSection({
-    required this.icon,
-    required this.title,
-    required this.count,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  /// Carte de statistique individuelle
+  Widget _buildStatCard(ColorScheme cs, IconData icon, String value, String label) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Icon(icon, color: Theme.of(context).colorScheme.tertiary),
-        title: Text(title),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.tertiaryContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text('$count', style: TextStyle(
-                color: Theme.of(context).colorScheme.onTertiaryContainer,
-                fontSize: 12)),
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right),
+            Icon(icon, color: cs.primary, size: 24),
+            const SizedBox(height: 4),
+            Text(value, style: Theme.of(context).textTheme.titleMedium),
+            Text(label, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11)),
           ],
         ),
-        onTap: onTap,
       ),
     );
   }
-}
 
-/// ─── VAULT LEURRE (DECOY) ───
-class _DecoyVaultContent extends StatelessWidget {
-  final VoidCallback onLock;
+  /// Carte de securite
+  Widget _buildSecurityCard(ColorScheme cs) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.shield, color: cs.primary),
+                const SizedBox(width: 8),
+                Text('Securite', style: Theme.of(context).textTheme.titleMedium),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildSecurityRow(Icons.lock, 'Chiffrement', 'AES-256 actif'),
+            _buildSecurityRow(Icons.fingerprint, 'Biomimetrie', 'Configuree'),
+            _buildSecurityRow(Icons.timer, 'Verrouillage auto', '5 minutes'),
+            _buildSecurityRow(Icons.warning, 'PIN panique', 'Configure'),
+          ],
+        ),
+      ),
+    );
+  }
 
-  const _DecoyVaultContent({required this.onLock});
+  /// Ligne d'information de securite
+  Widget _buildSecurityRow(IconData icon, String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Expanded(child: Text(title)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
+  /// Liste des sections du coffre
+  Widget _buildSectionsList(ColorScheme cs) {
+    final sections = [
+      _Section(Icons.photo, 'Photos', 0, cs.primary),
+      _Section(Icons.videocam, 'Videos', 0, cs.tertiary),
+      _Section(Icons.audiotrack, 'Audios', 0, cs.secondary),
+      _Section(Icons.description, 'Documents', 0, cs.error),
+      _Section(Icons.vpn_key, 'Mots de passe', 0, cs.tertiary),
+      _Section(Icons.note, 'Notes', 0, cs.primary),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Categories', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        ...sections.map((s) => Card(
+              child: ListTile(
+                leading: Icon(s.icon, color: s.color),
+                title: Text(s.label),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('${s.count}', style: TextStyle(color: cs.onSurfaceVariant)),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
+                onTap: () {},
+              ),
+            )),
+      ],
+    );
+  }
+
+  /// Coffre leurre (vide) - active par PIN panique
+  Widget _buildDecoyVault(ColorScheme cs) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Coffre-fort'),
         actions: [
-          IconButton(icon: const Icon(Icons.lock_open), onPressed: onLock),
+          IconButton(
+            onPressed: () {
+              setState(() {
+                _isUnlocked = false;
+                _isPanicMode = false;
+                _pin = '';
+              });
+            },
+            icon: const Icon(Icons.lock_outline),
+          ),
         ],
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.folder_open, size: 64,
-                color: Theme.of(context).colorScheme.onSurfaceVariant),
+            Icon(Icons.folder_open, size: 64, color: cs.onSurfaceVariant),
             const SizedBox(height: 16),
             Text('Coffre vide',
-                style: Theme.of(context).textTheme.titleLarge),
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 18)),
             const SizedBox(height: 8),
-            Text('Aucun élément chiffré',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            Text('Aucun fichier protege',
+                style: TextStyle(color: cs.onSurfaceVariant)),
           ],
         ),
       ),
     );
   }
+}
+
+/// Section du coffre-fort
+class _Section {
+  final IconData icon;
+  final String label;
+  final int count;
+  final Color color;
+  const _Section(this.icon, this.label, this.count, this.color);
 }

@@ -1,346 +1,251 @@
+// GiovaPlayer - Routeur principal avec GoRouter et ShellRoute
+// Contact: giobamos03@gmail.com | WhatsApp: +22670698070
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../theme/app_theme.dart';
+import '../providers/app_providers.dart';
 import '../../features/audio/screens/audio_player_screen.dart';
 import '../../features/video/screens/video_player_screen.dart';
 import '../../features/gallery/screens/gallery_screen.dart';
-import '../../features/ia_photo/screens/ia_photo_fix_screen.dart';
 import '../../features/vault/screens/vault_screen.dart';
 import '../../features/downloader/screens/downloader_screen.dart';
 import '../../features/tools/screens/tools_screen.dart';
-import '../theme/app_theme.dart';
 
-/// ─── PROVIDER DU THÈME SÉLECTIONNÉ ───
-final themeNameProvider = StateProvider<String>((ref) => 'Violet Royal');
-final isDarkModeProvider = StateProvider<bool>((ref) => true);
-
-/// ─── ROUTEUR PRINCIPAL GO_ROUTER ───
-/// Navigation déclarative avec transitions fluides
-final routerProvider = Provider<GoRouter>((ref) {
+/// Provider du routeur GiovaPlayer
+final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    initialLocation: '/',
-    debugLogDiagnostics: true,
+    initialLocation: '/accueil',
     routes: [
-      /// Route racine = écran d'accueil avec NavigationBar
       ShellRoute(
         builder: (context, state, child) {
-          return MainScaffold(child: child);
+          return _ScaffoldWithNavBar(child: child);
         },
         routes: [
           GoRoute(
-            path: '/',
-            name: 'home',
+            path: '/accueil',
             builder: (context, state) => const _HomeDashboard(),
           ),
           GoRoute(
             path: '/audio',
-            name: 'audio',
             builder: (context, state) => const AudioPlayerScreen(),
           ),
           GoRoute(
             path: '/video',
-            name: 'video',
             builder: (context, state) => const VideoPlayerScreen(),
           ),
           GoRoute(
-            path: '/gallery',
-            name: 'gallery',
+            path: '/galerie',
             builder: (context, state) => const GalleryScreen(),
           ),
           GoRoute(
-            path: '/vault',
-            name: 'vault',
+            path: '/coffre',
             builder: (context, state) => const VaultScreen(),
           ),
           GoRoute(
-            path: '/downloader',
-            name: 'downloader',
+            path: '/download',
             builder: (context, state) => const DownloaderScreen(),
           ),
           GoRoute(
-            path: '/tools',
-            name: 'tools',
+            path: '/outils',
             builder: (context, state) => const ToolsScreen(),
           ),
         ],
-      ),
-
-      /// Routes hors Shell (plein écran)
-      GoRoute(
-        path: '/ia-photo-fix',
-        name: 'iaPhotoFix',
-        builder: (context, state) => const IaPhotoFixScreen(),
       ),
     ],
   );
 });
 
-/// ─── SQUELETTE PRINCIPAL AVEC NAVIGATION BAR ───
-class MainScaffold extends ConsumerWidget {
+/// Onglets de navigation principaux
+class _NavItem {
+  final String path;
+  final String label;
+  final IconData icon;
+  final IconData activeIcon;
+
+  const _NavItem({
+    required this.path,
+    required this.label,
+    required this.icon,
+    required this.activeIcon,
+  });
+}
+
+/// Liste des 7 onglets de navigation
+const _navItems = [
+  _NavItem(path: '/accueil', label: 'Accueil', icon: Icons.home_outlined, activeIcon: Icons.home),
+  _NavItem(path: '/audio', label: 'Audio', icon: Icons.music_note_outlined, activeIcon: Icons.music_note),
+  _NavItem(path: '/video', label: 'Video', icon: Icons.play_circle_outline, activeIcon: Icons.play_circle),
+  _NavItem(path: '/galerie', label: 'Galerie', icon: Icons.photo_library_outlined, activeIcon: Icons.photo_library),
+  _NavItem(path: '/coffre', label: 'Coffre', icon: Icons.lock_outline, activeIcon: Icons.lock),
+  _NavItem(path: '/download', label: 'Download', icon: Icons.download_outlined, activeIcon: Icons.download),
+  _NavItem(path: '/outils', label: 'Outils', icon: Icons.build_outlined, activeIcon: Icons.build),
+];
+
+/// Scaffold principal avec la barre de navigation inferieure
+class _ScaffoldWithNavBar extends StatelessWidget {
   final Widget child;
-  const MainScaffold({super.key, required this.child});
+  const _ScaffoldWithNavBar({required this.child});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    /// Index actif basé sur la route
-    final location = GoRouterState.of(context).uri.path;
-    final currentIndex = switch (location) {
-      '/' => 0,
-      '/audio' => 1,
-      '/video' => 2,
-      '/gallery' => 3,
-      '/vault' => 4,
-      '/downloader' => 5,
-      '/tools' => 6,
-      _ => 0,
-    };
-
+  Widget build(BuildContext context) {
     return Scaffold(
       body: child,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex,
-        onDestinationSelected: (index) {
-          final target = switch (index) {
-            0 => '/',
-            1 => '/audio',
-            2 => '/video',
-            3 => '/gallery',
-            4 => '/vault',
-            5 => '/downloader',
-            6 => '/tools',
-            _ => '/',
-          };
-          context.go(target);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Accueil',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.headphones_outlined),
-            selectedIcon: Icon(Icons.headphones),
-            label: 'Audio',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.play_circle_outline),
-            selectedIcon: Icon(Icons.play_circle),
-            label: 'Vidéo',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.photo_library_outlined),
-            selectedIcon: Icon(Icons.photo_library),
-            label: 'Galerie',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.lock_outline),
-            selectedIcon: Icon(Icons.lock),
-            label: 'Coffre',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.download_outlined),
-            selectedIcon: Icon(Icons.download),
-            label: 'Download',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.build_outlined),
-            selectedIcon: Icon(Icons.build),
-            label: 'Outils',
-          ),
-        ],
+        destinations: _navItems
+            .map((n) => NavigationDestination(
+                  icon: Icon(n.icon),
+                  selectedIcon: Icon(n.activeIcon),
+                  label: n.label,
+                ))
+            .toList(),
+        onDestinationSelected: (idx) => context.go(_navItems[idx].path),
+        selectedIndex: _currentIndex(context),
       ),
     );
   }
+
+  /// Calcule l'index de l'onglet actif
+  int _currentIndex(BuildContext context) {
+    final location = GoRouterState.of(context).uri.path;
+    for (var i = 0; i < _navItems.length; i++) {
+      if (location.startsWith(_navItems[i].path)) return i;
+    }
+    return 0;
+  }
 }
 
-/// ─── ÉCRAN D'ACCUEIL DASHBOARD ───
+/// Tableau de bord principal avec branding GiovaPlayer
 class _HomeDashboard extends ConsumerWidget {
   const _HomeDashboard();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Media Hub Pro MAX'),
-        actions: [
-          /// Bascule thème clair/sombre
-          IconButton(
-            icon: Icon(
-              ref.watch(isDarkModeProvider)
-                  ? Icons.light_mode
-                  : Icons.dark_mode,
-            ),
-            onPressed: () => ref.read(isDarkModeProvider.notifier).state =
-                !ref.read(isDarkModeProvider),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => context.push('/settings'),
-          ),
-        ],
-      ),
-      body: ListView(
+      appBar: AppBar(title: const Text('GiovaPlayer')),
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        children: [
-          /// Carte bienvenue IA
-          _WelcomeCard(),
-          const SizedBox(height: 16),
-
-          /// Grille des 6 modules
-          Text(
-            'Modules',
-            style: theme.textTheme.titleLarge,
-          ),
-          const SizedBox(height: 12),
-          _ModuleGrid(),
-          const SizedBox(height: 24),
-
-          /// Suggestions IA
-          Text(
-            'Suggestions IA',
-            style: theme.textTheme.titleLarge,
-          ),
-          const SizedBox(height: 12),
-          _AiSuggestions(),
-        ],
-      ),
-    );
-  }
-}
-
-/// Carte bienvenue avec animation Rive placeholder
-class _WelcomeCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Card(
-      color: cs.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(Icons.auto_awesome, color: cs.onPrimaryContainer, size: 28),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Bienvenue dans Media Hub Pro MAX',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: cs.onPrimaryContainer,
-                        ),
-                  ),
-                ),
-              ],
+            _buildBrandingCard(cs, theme),
+            const SizedBox(height: 20),
+            _buildModuleGrid(context, cs),
+            const SizedBox(height: 20),
+            _buildIaSuggestions(cs),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Carte de branding GiovaPlayer
+  Widget _buildBrandingCard(ColorScheme cs, ThemeData theme) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Icon(Icons.play_circle_filled, size: 56, color: cs.primary),
+            const SizedBox(height: 12),
+            Text('GiovaPlayer', style: theme.textTheme.headlineMedium),
+            const SizedBox(height: 4),
+            Text(
+              '6 applications en 1',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
-              '6 apps en 1. Audio Hi-Res, Vidéo 8K, Galerie IA, '
-              'Coffre-fort AES-256, Downloader universel, Outils pro.',
-              style: TextStyle(color: cs.onPrimaryContainer.withOpacity(0.8)),
+              'giobamos03@gmail.com | WhatsApp: +22670698070',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
       ),
     );
   }
-}
 
-/// Grille des 6 modules principaux
-class _ModuleGrid extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
+  /// Grille des modules principaux
+  Widget _buildModuleGrid(BuildContext context, ColorScheme cs) {
     final modules = [
-      _ModuleItem('Audio', Icons.headphones, '/audio', 'Hi-Res FLAC/WAV/DSF'),
-      _ModuleItem('Vidéo', Icons.play_circle, '/video', '8K HDR10+ Dolby'),
-      _ModuleItem('Galerie', Icons.photo_library, '/gallery', 'Tri IA + Recherche'),
-      _ModuleItem('Coffre', Icons.lock, '/vault', 'AES-256 + Biométrie'),
-      _ModuleItem('Download', Icons.download, '/downloader', 'YT/TikTok/Torrent'),
-      _ModuleItem('Outils', Icons.build, '/tools', 'Convertisseur + Clean'),
+      _ModuleItem(Icons.music_note, 'Audio', '/audio'),
+      _ModuleItem(Icons.play_circle, 'Video', '/video'),
+      _ModuleItem(Icons.photo_library, 'Galerie', '/galerie'),
+      _ModuleItem(Icons.lock, 'Coffre', '/coffre'),
+      _ModuleItem(Icons.download, 'Download', '/download'),
+      _ModuleItem(Icons.build, 'Outils', '/outils'),
     ];
 
-    return GridView.builder(
+    return GridView.count(
+      crossAxisCount: 3,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 1.4,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      itemCount: modules.length,
-      itemBuilder: (context, index) => modules[index],
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      children: modules.map((m) {
+        return Card(
+          child: InkWell(
+            onTap: () => context.go(m.route),
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(m.icon, size: 32, color: cs.primary),
+                  const SizedBox(height: 8),
+                  Text(m.label, style: Theme.of(context).textTheme.labelLarge),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
-}
 
-class _ModuleItem extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final String route;
-  final String subtitle;
-
-  const _ModuleItem(this.title, this.icon, this.route, this.subtitle);
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Card(
-      child: InkWell(
-        onTap: () => context.go(route),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 32, color: cs.primary),
-              const SizedBox(height: 8),
-              Text(title, style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+  /// Suggestions IA sur le tableau de bord
+  Widget _buildIaSuggestions(ColorScheme cs) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Suggestions IA', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Card(
+          child: ListTile(
+            leading: Icon(Icons.auto_fix_high, color: cs.primary),
+            title: const Text('Amelioration photo IA'),
+            subtitle: const Text('Optimisez vos photos automatiquement'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.go('/galerie'),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Suggestions IA basées sur l'usage
-class _AiSuggestions extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        ListTile(
-          leading: const Icon(Icons.auto_fix_high),
-          title: const Text('Correction Photo IA'),
-          subtitle: const Text('3 photos nécessitent une correction auto'),
-          trailing: const Icon(Icons.arrow_forward),
-          onTap: () => context.push('/ia-photo-fix'),
-        ),
-        ListTile(
-          leading: const Icon(Icons.delete_sweep),
-          title: const Text('Nettoyage suggéré'),
-          subtitle: const Text('1.2 GB de fichiers doublons détectés'),
-          trailing: const Icon(Icons.arrow_forward),
-          onTap: () => context.go('/tools'),
+        Card(
+          child: ListTile(
+            leading: Icon(Icons.subtitles, color: cs.primary),
+            title: const Text('Sous-titres IA'),
+            subtitle: const Text('Generer des sous-titres pour vos videos'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.go('/video'),
+          ),
         ),
       ],
     );
   }
+}
+
+/// Element de module pour la grille d'accueil
+class _ModuleItem {
+  final IconData icon;
+  final String label;
+  final String route;
+  const _ModuleItem(this.icon, this.label, this.route);
 }

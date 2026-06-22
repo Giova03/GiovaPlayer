@@ -1,71 +1,105 @@
-/// ─── CONSTANTES GLOBALES MEDIA HUB PRO MAX ───
+// GiovaPlayer - Constantes globales de l'application
+// Contact: giobamos03@gmail.com | WhatsApp: +22670698070
 
-/// Nom de l'application
-const String appName = 'Media Hub Pro MAX';
-const String appVersion = '1.0.0';
+/// Constantes de l'application GiovaPlayer
+class AppConstants {
+  AppConstants._();
 
-/// ─── AUDIO ───
-const int equalizerBands = 32;
-const int crossfadeDefaultSec = 3;
-const int crossfadeMaxSec = 12;
-const double replayGainTargetDb = -14.0;
+  /// Nom de l'application
+  static const String appName = 'GiovaPlayer';
 
-/// Formats audio supportés
-const Set<String> audioExtensions = {
-  'flac', 'wav', 'dsf', 'dff', 'mp3', 'aac', 'ogg',
-  'opus', 'wma', 'alac', 'm4a', 'ape',
-};
+  /// Version de l'application
+  static const String appVersion = '2.0.0';
 
-/// ─── VIDÉO ───
-const Set<String> videoExtensions = {
-  'mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm',
-  'm4v', '3gp', 'ts', 'mts', 'm2ts',
-};
+  /// Email de contact
+  static const String contactEmail = 'giobamos03@gmail.com';
 
-/// Résolutions supportées
-const Map<String, int> videoResolutions = {
-  '4K': 2160,
-  '1440p': 1440,
-  '1080p': 1080,
-  '720p': 720,
-  '480p': 480,
-  '360p': 360,
-};
+  /// WhatsApp de contact
+  static const String contactWhatsapp = '+22670698070';
 
-/// ─── IMAGE ───
-const Set<String> imageExtensions = {
-  'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',
-  'tiff', 'tif', 'heic', 'heif', 'raw', 'dng',
-};
+  /// Extensions audio supportees
+  static const Set<String> audioExtensions = {
+    'mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a',
+    'opus', 'aiff', 'alac', 'ape', 'dsd', 'mid', 'midi',
+  };
 
-/// ─── COFFRE-FORT ───
-const int vaultPinLength = 4;
-const int maxFailedAttempts = 3;
-const int aesKeySizeBits = 256;
+  /// Extensions video supportees
+  static const Set<String> videoExtensions = {
+    'mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm',
+    '3gp', 'm4v', 'ts', 'mpg', 'mpeg', 'vob', 'ogv',
+  };
 
-/// ─── TÉLÉCHARGEMENT ───
-const int maxConcurrentDownloads = 3;
-const int downloadSpeedLimitKbps = 0; // 0 = illimité
-const Set<String> supportedPlatforms = {
-  'youtube.com', 'youtu.be', 'tiktok.com', 'instagram.com',
-  'facebook.com', 'fb.watch', 'twitter.com', 'x.com',
-};
+  /// Extensions image supportees
+  static const Set<String> imageExtensions = {
+    'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff',
+    'tif', 'svg', 'ico', 'heic', 'heif', 'raw', 'cr2',
+  };
 
-/// ─── IA PHOTO ───
-const int iaFixTargetMs = 2000; // Objectif 2 secondes
-const double defaultIaIntensity = 0.75;
-const int maxImageDimension = 4096; // pixels
+  /// Code PIN par defaut du coffre-fort
+  static const String defaultVaultPin = '1234';
 
-/// ─── STOCKAGE ───
-const int maxAppSizeMb = 90; // APK split < 90MB
-const String cacheFolderName = 'media_hub_cache';
-const String vaultFolderName = 'media_hub_vault';
-const String downloadFolderName = 'MediaHub';
+  /// Code PIN de panique (ouvre le coffre leurre)
+  static const String panicPin = '9999';
 
-/// ─── THÈMES ───
-const int totalCustomThemes = 20;
-const int defaultThemeIndex = 0;
+  /// Nombre maximum de tentatives PIN
+  static const int maxPinAttempts = 5;
 
-/// ─── DÉBOUNCE ───
-const int searchDebounceMs = 300;
-const int saveDebounceMs = 500;
+  /// Taille maximale du coffre-fort (octets) - 5 Go
+  static const int maxVaultSize = 5 * 1024 * 1024 * 1024;
+
+  /// Nombre maximum de telechargements simultanes
+  static const int maxConcurrentDownloads = 3;
+
+  /// Taille du buffer de telechargement (Ko)
+  static const int downloadBufferSize = 64;
+
+  /// Nombre de bandes de l'equaliseur
+  static const int eqBandCount = 32;
+
+  /// Frequence minimale de l'equaliseur (Hz)
+  static const double eqMinFreq = 20.0;
+
+  /// Frequence maximale de l'equaliseur (Hz)
+  static const double eqMaxFreq = 20000.0;
+
+  /// Constantes pour la photo IA
+  static const String tfliteModelPath = 'assets/models/tflite/photo_enhancer.tflite';
+
+  /// Intensite par defaut de la correction IA
+  static const double defaultIaIntensity = 50.0;
+
+  /// Nombre maximum de photos par lot IA
+  static const int maxIaBatchSize = 10;
+
+  /// Niveaux de preset IA
+  static const Map<String, double> iaPresets = {
+    'Subtil': 25.0,
+    'Equilibre': 50.0,
+    'Standard': 70.0,
+    'Intense': 90.0,
+  };
+
+  /// Plateformes de telechargement supportees
+  static const Map<String, String> downloadPlatforms = {
+    'YouTube': 'youtube.com',
+    'TikTok': 'tiktok.com',
+    'Instagram': 'instagram.com',
+    'Facebook': 'facebook.com',
+    'Twitter/X': 'twitter.com',
+  };
+
+  /// Categories de stockage pour l'analyse
+  static const List<String> storageCategories = [
+    'Audio', 'Video', 'Images', 'Documents', 'Cache', 'Autres',
+  ];
+
+  /// Formats de conversion disponibles
+  static const Map<String, List<String>> converterFormats = {
+    'video_audio': ['mp3', 'aac', 'flac', 'ogg', 'wav'],
+    'image_pdf': ['pdf'],
+    'pdf_word': ['docx', 'txt'],
+    'audio_audio': ['mp3', 'aac', 'flac', 'ogg', 'wav', 'm4a'],
+    'video_video': ['mp4', 'mkv', 'avi', 'webm', 'mov'],
+    'video_gif': ['gif'],
+  };
+}

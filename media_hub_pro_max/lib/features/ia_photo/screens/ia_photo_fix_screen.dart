@@ -1,46 +1,29 @@
+// GiovaPlayer - Ecran de correction photo IA
+// Contact: giobamos03@gmail.com | WhatsApp: +22670698070
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import '../services/ia_photo_fixer.dart';
 
-/// ─── ÉCRAN IA PHOTO FIX — MODULE OBLIGATOIRE ───
-/// Fonctionnement :
-/// Input: user sélectionne photo
-/// IA exécute en 2s:
-///   - Analyse histogramme → corrige expo/contraste
-///   - Détection visage → lissage peau naturel + éclaircit yeux
-///   - Détection bruit → débruitage IA
-///   - Netteté adaptative → accentue détails sans halos
-/// Output: avant/après avec slider. Boutons Auto Fix, Pro Mode, Comparer
-/// Modèle: TensorFlow Lite local 100% offline
-class IaPhotoFixScreen extends ConsumerStatefulWidget {
+/// Ecran de correction photo IA avec modes Auto et Pro
+class IaPhotoFixScreen extends StatefulWidget {
   const IaPhotoFixScreen({super.key});
 
   @override
-  ConsumerState<IaPhotoFixScreen> createState() => _IaPhotoFixScreenState();
+  State<IaPhotoFixScreen> createState() => _IaPhotoFixScreenState();
 }
 
-class _IaPhotoFixScreenState extends ConsumerState<IaPhotoFixScreen> {
-  /// Provider du fixer IA
-  final _fixer = IaPhotoFixer();
-
-  /// État du traitement
-  FixState _state = FixState.idle;
-  double _iaIntensity = 75.0;
+class _IaPhotoFixScreenState extends State<IaPhotoFixScreen> {
+  bool _isAutoMode = true;
+  double _intensity = 50.0;
+  String _selectedPreset = 'Equilibre';
+  ProSettings _proSettings = const ProSettings();
+  FixState _fixState = const FixState();
+  bool _showCompare = false;
   double _comparePosition = 0.5;
-  FixResult? _result;
+  Uint8List? _originalImage;
+  Uint8List? _fixedImage;
 
-  /// Mode Pro — ajustements manuels
-  double _exposure = 0;
-  double _contrast = 0;
-  double _sharpness = 0;
-  double _denoise = 0;
-  double _wb = 0;
-  bool _faceSmooth = true;
-  bool _eyeBright = true;
-
-  /// Mode actuel : auto ou pro
-  bool _isProMode = false;
+  final List<String> _presets = ['Subtil', 'Equilibre', 'Standard', 'Intense'];
 
   @override
   Widget build(BuildContext context) {
@@ -50,595 +33,342 @@ class _IaPhotoFixScreenState extends ConsumerState<IaPhotoFixScreen> {
       appBar: AppBar(
         title: const Text('IA Photo Fix'),
         actions: [
-          /// Bascule Auto / Pro
-          SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('Auto')),
-              ButtonSegment(value: true, label: Text('Pro')),
-            ],
-            selected: {_isProMode},
-            onSelectionChanged: (v) => setState(() => _isProMode = v.first),
+          IconButton(
+            onPressed: _resetAll,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Reinitialiser',
           ),
-          const SizedBox(width: 8),
         ],
       ),
       body: Column(
         children: [
-          /// Zone de comparaison avant/après
-          Expanded(
-            flex: 3,
-            child: _CompareView(
-              state: _state,
-              result: _result,
-              comparePosition: _comparePosition,
-              onCompareChanged: (v) => setState(() => _comparePosition = v),
-            ),
-          ),
-
-          /// Panneau de contrôles
-          Expanded(
-            flex: 2,
-            child: _isProMode ? _ProControlsPanel(
-              exposure: _exposure,
-              contrast: _contrast,
-              sharpness: _sharpness,
-              denoise: _denoise,
-              wb: _wb,
-              faceSmooth: _faceSmooth,
-              eyeBright: _eyeBright,
-              onExposureChanged: (v) => setState(() => _exposure = v),
-              onContrastChanged: (v) => setState(() => _contrast = v),
-              onSharpnessChanged: (v) => setState(() => _sharpness = v),
-              onDenoiseChanged: (v) => setState(() => _denoise = v),
-              onWbChanged: (v) => setState(() => _wb = v),
-              onFaceSmoothChanged: (v) => setState(() => _faceSmooth = v),
-              onEyeBrightChanged: (v) => setState(() => _eyeBright = v),
-            ) : _AutoControlsPanel(
-              intensity: _iaIntensity,
-              onIntensityChanged: (v) => setState(() => _iaIntensity = v),
-            ),
-          ),
+          _buildModeSelector(cs),
+          Expanded(child: _buildImagePreview(cs)),
+          Expanded(child: _isAutoMode ? _buildAutoPanel(cs) : _buildProPanel(cs)),
+          _buildActionButtons(cs),
         ],
       ),
+    );
+  }
 
-      /// Boutons d'action principaux
-      bottomNavigationBar: _ActionButtons(
-        state: _state,
-        onAutoFix: _runAutoFix,
-        onCompare: _toggleCompare,
-        onSave: _saveResult,
-        onReset: _reset,
+  /// Selecteur de mode Auto/Pro
+  Widget _buildModeSelector(ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(value: true, label: Text('Auto'), icon: Icon(Icons.auto_fix_high)),
+          ButtonSegment(value: false, label: Text('Pro'), icon: Icon(Icons.tune)),
+        ],
+        selected: {_isAutoMode},
+        onSelectionChanged: (v) => setState(() => _isAutoMode = v.first),
       ),
     );
   }
 
-  /// Lance le pipeline IA complet
-  Future<void> _runAutoFix() async {
-    setState(() => _state = FixState.processing);
-
-    try {
-      final result = await _fixer.processImage(
-        imagePath: 'dummy_path',
-        intensity: _iaIntensity / 100,
-        proSettings: _isProMode
-            ? ProSettings(
-                exposure: _exposure,
-                contrast: _contrast,
-                sharpness: _sharpness,
-                denoise: _denoise,
-                wb: _wb,
-                faceSmooth: _faceSmooth,
-                eyeBright: _eyeBright,
-              )
-            : null,
-      );
-
-      setState(() {
-        _result = result;
-        _state = FixState.done;
-      });
-    } catch (e) {
-      setState(() => _state = FixState.error);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur IA : $e')),
-        );
-      }
-    }
-  }
-
-  void _toggleCompare() {
-    /// Animation de balayage avant/après
-  }
-
-  void _saveResult() {
-    if (_result != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Photo corrigée sauvegardée !')),
-      );
-    }
-  }
-
-  void _reset() {
-    setState(() {
-      _state = FixState.idle;
-      _result = null;
-      _iaIntensity = 75.0;
-      _exposure = 0;
-      _contrast = 0;
-      _sharpness = 0;
-      _denoise = 0;
-      _wb = 0;
-    });
-  }
-}
-
-/// ─── VUE COMPARAISON AVANT/APRÈS AVEC SLIDER ───
-class _CompareView extends StatelessWidget {
-  final FixState state;
-  final FixResult? result;
-  final double comparePosition;
-  final ValueChanged<double> onCompareChanged;
-
-  const _CompareView({
-    required this.state,
-    required this.result,
-    required this.comparePosition,
-    required this.onCompareChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Stack(
-      children: [
-        /// Image avant ( complète )
-        Container(
+  /// Previsualisation de l'image avec comparaison
+  Widget _buildImagePreview(ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        height: 240,
+        decoration: BoxDecoration(
           color: cs.surfaceContainerHighest,
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.photo, size: 64, color: Colors.grey),
-                const SizedBox(height: 8),
-                Text('AVANT', style: TextStyle(color: cs.onSurfaceVariant)),
-              ],
-            ),
-          ),
+          borderRadius: BorderRadius.circular(16),
         ),
-
-        /// Image après ( clippée selon slider )
-        if (result != null)
-          ClipRect(
-            child: Align(
-              alignment: Alignment.centerRight,
-              widthFactor: 1 - comparePosition,
-              child: Container(
-                color: cs.primaryContainer.withOpacity(0.3),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.auto_fix_high, size: 64),
-                      const SizedBox(height: 8),
-                      Text('APRÈS', style: TextStyle(color: cs.primary)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-        /// Slider de comparaison vertical
-        if (result != null)
-          Positioned(
-            left: comparePosition * MediaQuery.of(context).size.width,
-            top: 0,
-            bottom: 0,
-            child: GestureDetector(
-              onHorizontalDragUpdate: (details) {
-                final pos = details.globalPosition.dx /
-                    MediaQuery.of(context).size.width;
-                onCompareChanged(pos.clamp(0.05, 0.95));
-              },
-              child: Container(
-                width: 3,
-                color: Colors.white,
-                child: Center(
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 8,
-                        ),
-                      ],
-                    ),
-                    child: const Icon(Icons.compare_arrows, size: 18),
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-        /// Overlay de chargement
-        if (state == FixState.processing)
-          Container(
-            color: Colors.black54,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Analyse IA en cours...',
-                    style: TextStyle(
-                      color: cs.onPrimaryContainer,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    result?.progress ?? 'Correction histogramme',
-                    style: TextStyle(
-                      color: cs.onPrimaryContainer.withOpacity(0.7),
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-        /// Labels Avant / Après
-        if (result != null)
-          Positioned(
-            bottom: 8,
-            left: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Text('Avant',
-                  style: TextStyle(color: Colors.white, fontSize: 11)),
-            ),
-          ),
-        if (result != null)
-          Positioned(
-            bottom: 8,
-            right: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Text('Après',
-                  style: TextStyle(color: Colors.white, fontSize: 11)),
-            ),
-          ),
-      ],
+        child: Stack(
+          children: [
+            _buildPlaceholder(cs),
+            if (_showCompare && _fixedImage != null) _buildCompareSlider(cs),
+          ],
+        ),
+      ),
     );
   }
-}
 
-/// ─── PANNEAU CONTRÔLES AUTO ───
-class _AutoControlsPanel extends StatelessWidget {
-  final double intensity;
-  final ValueChanged<double> onIntensityChanged;
+  /// Placeholder de l'image
+  Widget _buildPlaceholder(ColorScheme cs) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.add_photo_alternate_outlined,
+              size: 56, color: cs.onSurfaceVariant),
+          const SizedBox(height: 8),
+          Text('Selectionnez une photo',
+              style: TextStyle(color: cs.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
 
-  const _AutoControlsPanel({
-    required this.intensity,
-    required this.onIntensityChanged,
-  });
+  /// Slider de comparaison avant/apres
+  Widget _buildCompareSlider(ColorScheme cs) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final splitX = constraints.maxWidth * _comparePosition;
+        return Stack(
+          children: [
+            // Cote gauche - original
+            Container(
+              width: splitX,
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                border: Border(
+                  right: BorderSide(color: cs.primary, width: 2),
+                ),
+              ),
+              child: Center(
+                child: Text('Avant',
+                    style: TextStyle(color: cs.onSurfaceVariant)),
+              ),
+            ),
+            // Cote droit - corrige
+            Positioned(
+              left: splitX,
+              top: 0,
+              bottom: 0,
+              right: 0,
+              child: Center(
+                child: Text('Apres',
+                    style: TextStyle(color: cs.primary)),
+              ),
+            ),
+            // Slider de comparaison
+            Positioned(
+              left: splitX - 20,
+              top: 0,
+              bottom: 0,
+              child: GestureDetector(
+                onHorizontalDragUpdate: (details) {
+                  setState(() {
+                    _comparePosition =
+                        (details.localPosition.dx / constraints.maxWidth)
+                            .clamp(0.05, 0.95);
+                  });
+                },
+                child: Container(
+                  width: 40,
+                  color: Colors.transparent,
+                  child: Center(
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: cs.primary,
+                      child: Icon(Icons.compare_arrows,
+                          color: cs.onPrimary, size: 18),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
+  /// Panneau Auto - intensite et presets
+  Widget _buildAutoPanel(ColorScheme cs) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          /// Titre + badge IA
+          Text('Intensite', style: Theme.of(context).textTheme.titleSmall),
           Row(
             children: [
-              Icon(Icons.auto_awesome, color: cs.primary),
-              const SizedBox(width: 8),
-              Text('Intensité IA', style: Theme.of(context).textTheme.titleMedium),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: cs.primaryContainer,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  '${intensity.round()}%',
-                  style: TextStyle(
-                    color: cs.onPrimaryContainer,
-                    fontWeight: FontWeight.w700,
-                  ),
+              const Text('0%'),
+              Expanded(
+                child: Slider(
+                  value: _intensity,
+                  min: 0,
+                  max: 100,
+                  divisions: 20,
+                  label: '${_intensity.round()}%',
+                  onChanged: (v) => setState(() => _intensity = v),
                 ),
               ),
+              const Text('100%'),
             ],
           ),
-          const SizedBox(height: 16),
-
-          /// Slider intensité principal
-          Slider(
-            value: intensity,
-            min: 0,
-            max: 100,
-            divisions: 100,
-            label: '${intensity.round()}%',
-            onChanged: onIntensityChanged,
-          ),
-
-          /// Presets rapides
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _IntensityPreset('Subtil', 30, intensity, onIntensityChanged),
-              _IntensityPreset('Équilibré', 55, intensity, onIntensityChanged),
-              _IntensityPreset('Standard', 75, intensity, onIntensityChanged),
-              _IntensityPreset('Intense', 100, intensity, onIntensityChanged),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          /// Détail des corrections IA
-          Text('Corrections IA appliquées :', style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 12),
+          Text('Presets', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
-            runSpacing: 8,
-            children: [
-              Chip(
-                avatar: const Icon(Icons.exposure, size: 16),
-                label: const Text('Exposition'),
-                visualDensity: VisualDensity.compact,
-              ),
-              Chip(
-                avatar: const Icon(Icons.contrast, size: 16),
-                label: const Text('Contraste'),
-                visualDensity: VisualDensity.compact,
-              ),
-              Chip(
-                avatar: const Icon(Icons.face, size: 16),
-                label: const Text('Visage'),
-                visualDensity: VisualDensity.compact,
-              ),
-              Chip(
-                avatar: const Icon(Icons.grain, size: 16),
-                label: const Text('Débruitage'),
-                visualDensity: VisualDensity.compact,
-              ),
-              Chip(
-                avatar: const Icon(Icons.blur_on, size: 16),
-                label: const Text('Netteté'),
-                visualDensity: VisualDensity.compact,
-              ),
-              Chip(
-                avatar: const Icon(Icons.wb_sunny, size: 16),
-                label: const Text('WB'),
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
+            children: _presets.map((preset) {
+              final isSelected = _selectedPreset == preset;
+              return ChoiceChip(
+                label: Text(preset),
+                selected: isSelected,
+                onSelected: (_) => _selectPreset(preset),
+              );
+            }).toList(),
           ),
         ],
       ),
     );
   }
-}
 
-class _IntensityPreset extends StatelessWidget {
-  final String label;
-  final double value;
-  final double current;
-  final ValueChanged<double> onChanged;
-
-  const _IntensityPreset(this.label, this.value, this.current, this.onChanged);
-
-  @override
-  Widget build(BuildContext context) {
-    final isActive = (current - value).abs() < 5;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isActive,
-      onSelected: (_) => onChanged(value),
-    );
-  }
-}
-
-/// ─── PANNEAU CONTRÔLES PRO ───
-class _ProControlsPanel extends StatelessWidget {
-  final double exposure;
-  final double contrast;
-  final double sharpness;
-  final double denoise;
-  final double wb;
-  final bool faceSmooth;
-  final bool eyeBright;
-  final ValueChanged<double> onExposureChanged;
-  final ValueChanged<double> onContrastChanged;
-  final ValueChanged<double> onSharpnessChanged;
-  final ValueChanged<double> onDenoiseChanged;
-  final ValueChanged<double> onWbChanged;
-  final ValueChanged<bool> onFaceSmoothChanged;
-  final ValueChanged<bool> onEyeBrightChanged;
-
-  const _ProControlsPanel({
-    required this.exposure,
-    required this.contrast,
-    required this.sharpness,
-    required this.denoise,
-    required this.wb,
-    required this.faceSmooth,
-    required this.eyeBright,
-    required this.onExposureChanged,
-    required this.onContrastChanged,
-    required this.onSharpnessChanged,
-    required this.onDenoiseChanged,
-    required this.onWbChanged,
-    required this.onFaceSmoothChanged,
-    required this.onEyeBrightChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  /// Panneau Pro - reglages manuels
+  Widget _buildProPanel(ColorScheme cs) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ProSlider('Exposition', exposure, -100, 100, Icons.exposure, onExposureChanged),
-          _ProSlider('Contraste', contrast, -100, 100, Icons.contrast, onContrastChanged),
-          _ProSlider('Netteté', sharpness, 0, 100, Icons.blur_on, onSharpnessChanged),
-          _ProSlider('Débruitage', denoise, 0, 100, Icons.grain, onDenoiseChanged),
-          _ProSlider('Balance blancs', wb, -100, 100, Icons.wb_sunny, onWbChanged),
+          _buildProSlider('Exposition', _proSettings.exposure, (v) {
+            setState(() => _proSettings = _proSettings.copyWith(exposure: v));
+          }),
+          _buildProSlider('Contraste', _proSettings.contrast, (v) {
+            setState(() => _proSettings = _proSettings.copyWith(contrast: v));
+          }),
+          _buildProSlider('Nettete', _proSettings.sharpness, (v) {
+            setState(() => _proSettings = _proSettings.copyWith(sharpness: v));
+          }),
+          _buildProSlider('Debruitage', _proSettings.denoise, (v) {
+            setState(() => _proSettings = _proSettings.copyWith(denoise: v));
+          }),
+          _buildProSlider('Balance blancs', _proSettings.whiteBalance, (v) {
+            setState(() => _proSettings = _proSettings.copyWith(whiteBalance: v));
+          }),
           const SizedBox(height: 8),
           SwitchListTile(
-            title: const Text('Lissage peau'),
-            subtitle: const Text('Correction naturelle visage'),
-            value: faceSmooth,
-            onChanged: onFaceSmoothChanged,
-            secondary: const Icon(Icons.face),
+            title: const Text('Lissage visage'),
+            value: _proSettings.faceSmooth,
+            onChanged: (v) {
+              setState(() => _proSettings = _proSettings.copyWith(faceSmooth: v));
+            },
           ),
           SwitchListTile(
-            title: const Text('Éclaircir yeux'),
-            subtitle: const Text('Reflétation naturelle des yeux'),
-            value: eyeBright,
-            onChanged: onEyeBrightChanged,
-            secondary: const Icon(Icons.visibility),
+            title: const Text('Eclat des yeux'),
+            value: _proSettings.eyeBright,
+            onChanged: (v) {
+              setState(() => _proSettings = _proSettings.copyWith(eyeBright: v));
+            },
           ),
         ],
       ),
     );
   }
-}
 
-class _ProSlider extends StatelessWidget {
-  final String label;
-  final double value;
-  final double min;
-  final double max;
-  final IconData icon;
-  final ValueChanged<double> onChanged;
-
-  const _ProSlider(this.label, this.value, this.min, this.max, this.icon, this.onChanged);
-
-  @override
-  Widget build(BuildContext context) {
+  /// Slider de reglage professionnel
+  Widget _buildProSlider(String label, double value, ValueChanged<double> onChanged) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 80,
-            child: Text(label, style: Theme.of(context).textTheme.bodySmall),
-          ),
+          SizedBox(width: 100, child: Text(label)),
           Expanded(
-            child: Slider(value: value, min: min, max: max, onChanged: onChanged),
+            child: Slider(
+              value: value,
+              onChanged: onChanged,
+            ),
           ),
           SizedBox(
             width: 40,
-            child: Text(
-              value.round().toString(),
-              textAlign: TextAlign.end,
-              style: Theme.of(context).textTheme.bodySmall,
+            child: Text('${(value * 100).round()}',
+                textAlign: TextAlign.end),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Boutons d'action principaux
+  Widget _buildActionButtons(ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _runAutoFix,
+              icon: const Icon(Icons.auto_fix_high),
+              label: const Text('Auto Fix'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _toggleCompare,
+              icon: const Icon(Icons.compare),
+              label: const Text('Comparer'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _saveResult,
+              icon: const Icon(Icons.save),
+              label: const Text('Sauver'),
             ),
           ),
         ],
       ),
     );
   }
-}
 
-/// ─── BOUTONS D'ACTION ───
-class _ActionButtons extends StatelessWidget {
-  final FixState state;
-  final VoidCallback onAutoFix;
-  final VoidCallback onCompare;
-  final VoidCallback onSave;
-  final VoidCallback onReset;
+  /// Selectionne un preset et ajuste l'intensite
+  void _selectPreset(String preset) {
+    final presetValues = {'Subtil': 25.0, 'Equilibre': 50.0, 'Standard': 70.0, 'Intense': 90.0};
+    setState(() {
+      _selectedPreset = preset;
+      _intensity = presetValues[preset] ?? 50.0;
+    });
+  }
 
-  const _ActionButtons({
-    required this.state,
-    required this.onAutoFix,
-    required this.onCompare,
-    required this.onSave,
-    required this.onReset,
-  });
+  /// Lance la correction automatique
+  Future<void> _runAutoFix() async {
+    if (_originalImage == null) return;
+    setState(() => _fixState = const FixState(isProcessing: true, progress: 0.1, currentStep: 'Analyse...'));
+    try {
+      final fixer = IaPhotoFixer.instance;
+      final result = await fixer.autoFix(_originalImage!, _intensity / 100);
+      setState(() {
+        _fixState = FixState(
+          isProcessing: false,
+          progress: 1.0,
+          currentStep: 'Termine',
+          result: result,
+        );
+        if (result.success) _fixedImage = result.imageData;
+      });
+    } catch (e) {
+      setState(() => _fixState = FixState(isProcessing: false, error: e.toString()));
+    }
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  /// Bascule le mode comparaison
+  void _toggleCompare() {
+    setState(() {
+      _showCompare = !_showCompare;
+      _comparePosition = 0.5;
+    });
+  }
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          /// Auto Fix — bouton principal
-          Expanded(
-            flex: 2,
-            child: FilledButton.icon(
-              onPressed: state == FixState.processing ? null : onAutoFix,
-              icon: state == FixState.processing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.auto_fix_high),
-              label: Text(state == FixState.processing
-                  ? 'Traitement...'
-                  : state == FixState.done
-                      ? 'Re-corriger'
-                      : 'Auto Fix'),
-            ),
-          ),
-          const SizedBox(width: 8),
-
-          /// Comparer
-          if (state == FixState.done) ...[
-            IconButton.filled(
-              onPressed: onCompare,
-              icon: const Icon(Icons.compare),
-              tooltip: 'Comparer',
-            ),
-            const SizedBox(width: 8),
-
-            /// Sauvegarder
-            IconButton.filled(
-              onPressed: onSave,
-              icon: const Icon(Icons.save),
-              tooltip: 'Sauvegarder',
-            ),
-          ],
-
-          const SizedBox(width: 8),
-
-          /// Reset
-          IconButton.outlined(
-            onPressed: onReset,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Réinitialiser',
-          ),
-        ],
-      ),
+  /// Sauvegarde le resultat
+  void _saveResult() {
+    if (_fixedImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune image corrigee a sauvegarder')),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Image sauvegardee avec succes')),
     );
+  }
+
+  /// Reinitialise tous les reglages
+  void _resetAll() {
+    setState(() {
+      _intensity = 50.0;
+      _selectedPreset = 'Equilibre';
+      _proSettings = const ProSettings();
+      _showCompare = false;
+      _fixedImage = null;
+      _fixState = const FixState();
+    });
   }
 }

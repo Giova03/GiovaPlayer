@@ -1,9 +1,11 @@
+// GiovaPlayer - Gestionnaire de telechargements
+// Contact: giobamos03@gmail.com | WhatsApp: +22670698070
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/providers/app_providers.dart';
+import '../../../core/utils/format_utils.dart';
 
-/// ─── ÉCRAN DOWNLOADER UNIVERSEL ───
-/// Features: YouTube/TikTok/IG/FB/Twitter 4K/MP3,
-/// Torrent + reprise + limite vitesse, Colle lien = analyse auto
+/// Ecran du gestionnaire de telechargements GiovaPlayer
 class DownloaderScreen extends ConsumerStatefulWidget {
   const DownloaderScreen({super.key});
 
@@ -12,22 +14,33 @@ class DownloaderScreen extends ConsumerStatefulWidget {
 }
 
 class _DownloaderScreenState extends ConsumerState<DownloaderScreen>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final _urlController = TextEditingController();
-  bool _isAnalyzing = false;
+  final TextEditingController _urlController = TextEditingController();
+  String _detectedPlatform = '';
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _urlController.addListener(_onUrlChanged);
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     _urlController.dispose();
+    _tabController.dispose();
     super.dispose();
+  }
+
+  /// Detection automatique de la plateforme quand l'URL change
+  void _onUrlChanged() {
+    final url = _urlController.text;
+    if (url.isNotEmpty) {
+      setState(() => _detectedPlatform = FormatUtils.detectPlatform(url));
+    } else {
+      setState(() => _detectedPlatform = '');
+    }
   }
 
   @override
@@ -36,425 +49,186 @@ class _DownloaderScreenState extends ConsumerState<DownloaderScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Downloader'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: _showDownloadSettings,
-          ),
-        ],
+        title: const Text('Telechargements'),
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
             Tab(text: 'Nouveau'),
             Tab(text: 'En cours'),
-            Tab(text: 'Terminés'),
+            Tab(text: 'Termines'),
           ],
         ),
       ),
-      body: Column(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          /// Barre URL — colle lien = analyse auto
-          _UrlBar(
-            controller: _urlController,
-            isAnalyzing: _isAnalyzing,
-            onAnalyze: _analyzeUrl,
-            onPaste: _pasteFromClipboard,
-          ),
-
-          /// Contenu des onglets
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _NewDownloadTab(),
-                _ActiveDownloadsTab(),
-                _CompletedDownloadsTab(),
-              ],
-            ),
-          ),
+          _buildNewDownloadTab(cs),
+          _buildActiveTab(cs),
+          _buildCompletedTab(cs),
         ],
       ),
     );
   }
 
-  /// Analyse automatique de l'URL collée
-  Future<void> _analyzeUrl() async {
-    if (_urlController.text.isEmpty) return;
-
-    setState(() => _isAnalyzing = true);
-
-    try {
-      final url = _urlController.text;
-
-      /// En production : youtube_explode_dart / yt-dlp
-      /// Détecter plateforme + formats disponibles
-      await Future.delayed(const Duration(seconds: 2));
-
-      if (mounted) {
-        _showFormatSelector(url);
-      }
-    } finally {
-      setState(() => _isAnalyzing = false);
-    }
-  }
-
-  /// Affiche les formats disponibles pour l'URL
-  void _showFormatSelector(String url) {
-    final platform = _detectPlatform(url);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (context, controller) => ListView(
-          controller: controller,
-          padding: const EdgeInsets.all(24),
-          children: [
-            Row(
-              children: [
-                Icon(platform.icon, size: 32, color: platform.color),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(platform.name, style: Theme.of(context).textTheme.titleMedium),
-                      Text('Détecté automatiquement',
-                          style: TextStyle(color: Theme.of(context).colorScheme.primary)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            /// Titre de la vidéo
-            Text('Titre du contenu détecté',
-                style: Theme.of(context).textTheme.titleSmall),
-            Text('Durée: 12:34 • Vues: 1.2M',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            const SizedBox(height: 16),
-
-            /// Formats vidéo
-            Text('Vidéo', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            _FormatTile('4K (2160p)', 'MP4 • H.265 • ~2.5 GB', true),
-            _FormatTile('1440p', 'MP4 • H.264 • ~1.2 GB', false),
-            _FormatTile('1080p', 'MP4 • H.264 • ~600 MB', false),
-            _FormatTile('720p', 'MP4 • H.264 • ~300 MB', false),
-            _FormatTile('480p', 'MP4 • H.264 • ~150 MB', false),
-
-            const SizedBox(height: 16),
-
-            /// Formats audio
-            Text('Audio', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            _FormatTile('FLAC', 'Lossless • ~45 MB', false),
-            _FormatTile('MP3 320kbps', 'Haute qualité • ~12 MB', false),
-            _FormatTile('M4A 256kbps', 'AAC • ~10 MB', false),
-            _FormatTile('OPUS 128kbps', 'Compact • ~6 MB', false),
-
-            const SizedBox(height: 24),
-
-            /// Bouton télécharger
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _startDownload(url, '4K MP4');
-                },
-                icon: const Icon(Icons.download),
-                label: const Text('Télécharger'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Détection plateforme depuis URL
-  _PlatformInfo _detectPlatform(String url) {
-    if (url.contains('youtube.com') || url.contains('youtu.be')) {
-      return _PlatformInfo('YouTube', Icons.play_circle, Colors.red);
-    } else if (url.contains('tiktok.com')) {
-      return _PlatformInfo('TikTok', Icons.music_note, Colors.pink);
-    } else if (url.contains('instagram.com')) {
-      return _PlatformInfo('Instagram', Icons.camera, Colors.purple);
-    } else if (url.contains('facebook.com') || url.contains('fb.')) {
-      return _PlatformInfo('Facebook', Icons.thumb_up, Colors.blue);
-    } else if (url.contains('twitter.com') || url.contains('x.com')) {
-      return _PlatformInfo('Twitter/X', Icons.flutter_dash, Colors.cyan);
-    }
-    return _PlatformInfo('Web', Icons.language, Colors.grey);
-  }
-
-  void _startDownload(String url, String format) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Téléchargement $format démarré')),
-    );
-  }
-
-  void _pasteFromClipboard() {
-    /// En production : Clipboard.getData('text/plain')
-  }
-
-  void _showDownloadSettings() {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => ListView(
-        padding: const EdgeInsets.all(24),
-        shrinkWrap: true,
+  /// Onglet nouveau telechargement
+  Widget _buildNewDownloadTab(ColorScheme cs) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Paramètres Download',
-              style: Theme.of(context).textTheme.titleLarge),
+          _buildUrlInput(cs),
+          if (_detectedPlatform.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildPlatformBadge(cs),
+          ],
           const SizedBox(height: 16),
-          ListTile(
-            title: const Text('Dossier de téléchargement'),
-            subtitle: const Text('/storage/emulated/0/Download/MediaHub'),
-            trailing: const Icon(Icons.folder),
-            onTap: () {},
-          ),
-          SwitchListTile(
-            title: const Text('WiFi uniquement'),
-            subtitle: const Text('Pas de téléchargement en 4G'),
-            value: true,
-            onChanged: (_) {},
-          ),
-          SwitchListTile(
-            title: const Text('Limite vitesse horaire'),
-            subtitle: const Text('Réduire vitesse en heures pleines'),
-            value: false,
-            onChanged: (_) {},
-          ),
-          ListTile(
-            title: const Text('Vitesse max'),
-            subtitle: const Text('Illimitée'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {},
-          ),
+          _buildAnalyzeButton(cs),
+          const SizedBox(height: 16),
+          _buildPlatformQuickLinks(cs),
         ],
       ),
     );
   }
-}
 
-/// ─── BARRE URL ───
-class _UrlBar extends StatelessWidget {
-  final TextEditingController controller;
-  final bool isAnalyzing;
-  final VoidCallback onAnalyze;
-  final VoidCallback onPaste;
-
-  const _UrlBar({
-    required this.controller,
-    required this.isAnalyzing,
-    required this.onAnalyze,
-    required this.onPaste,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          hintText: 'Collez un lien YouTube, TikTok, IG, FB, Twitter...',
-          prefixIcon: isAnalyzing
-              ? const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: SizedBox(
-                    width: 20, height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              : const Icon(Icons.link),
-          suffixIcon: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.content_paste),
-                onPressed: onPaste,
-                tooltip: 'Coller',
-              ),
-              IconButton(
-                icon: const Icon(Icons.analyze),
-                onPressed: onAnalyze,
-                tooltip: 'Analyser',
-              ),
-            ],
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(28),
-          ),
+  /// Champ de saisie URL avec auto-analyse
+  Widget _buildUrlInput(ColorScheme cs) {
+    return TextField(
+      controller: _urlController,
+      decoration: InputDecoration(
+        hintText: 'Collez votre lien ici...',
+        prefixIcon: const Icon(Icons.link),
+        suffixIcon: _urlController.text.isNotEmpty
+            ? IconButton(
+                onPressed: () => _urlController.clear(),
+                icon: const Icon(Icons.clear),
+              )
+            : const Icon(Icons.search),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
         ),
-        onSubmitted: (_) => onAnalyze(),
+      ),
+      onSubmitted: (_) => _analyzeUrl(),
+    );
+  }
+
+  /// Badge de plateforme detectee
+  Widget _buildPlatformBadge(ColorScheme cs) {
+    final icon = _getPlatformIcon(_detectedPlatform);
+    return Chip(
+      avatar: Icon(icon, size: 16),
+      label: Text('Plateforme: $_detectedPlatform'),
+      backgroundColor: cs.primaryContainer,
+    );
+  }
+
+  /// Bouton d'analyse
+  Widget _buildAnalyzeButton(ColorScheme cs) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: _analyzeUrl,
+        icon: const Icon(Icons.search),
+        label: const Text('Analyser le lien'),
       ),
     );
   }
-}
 
-/// ─── ONGLET NOUVEAU DOWNLOAD ───
-class _NewDownloadTab extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  /// Liens rapides par plateforme
+  Widget _buildPlatformQuickLinks(ColorScheme cs) {
+    final platforms = [
+      _PlatformLink('YouTube', Icons.play_circle_filled, Colors.red),
+      _PlatformLink('TikTok', Icons.music_note, Colors.black),
+      _PlatformLink('Instagram', Icons.camera_alt, Colors.purple),
+      _PlatformLink('Facebook', Icons.thumb_up, Colors.blue),
+      _PlatformLink('Twitter/X', Icons.tag, Colors.grey),
+    ];
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        /// Plateformes supportées
-        Text('Plateformes', style: Theme.of(context).textTheme.titleMedium),
+        Text('Plateformes supportees',
+            style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: [
-            Chip(avatar: const Icon(Icons.play_circle, size: 16), label: const Text('YouTube')),
-            Chip(avatar: const Icon(Icons.music_note, size: 16), label: const Text('TikTok')),
-            Chip(avatar: const Icon(Icons.camera, size: 16), label: const Text('Instagram')),
-            Chip(avatar: const Icon(Icons.thumb_up, size: 16), label: const Text('Facebook')),
-            Chip(avatar: const Icon(Icons.flutter_dash, size: 16), label: const Text('Twitter/X')),
-          ],
-        ),
-        const SizedBox(height: 24),
-
-        /// Torrent
-        Card(
-          child: ListTile(
-            leading: Icon(Icons.download, color: cs.primary),
-            title: const Text('Téléchargement Torrent'),
-            subtitle: const Text('Fichier .torrent ou lien magnétique'),
-            trailing: const Icon(Icons.add),
-            onTap: () {
-              /// Ouvrir sélecteur .torrent
-            },
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        /// Historique collé
-        Text('Récemment analysés',
-            style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        ...List.generate(3, (i) => ListTile(
-          leading: const Icon(Icons.history),
-          title: Text('Vidéo ${i + 1} — https://youtube.com/...'),
-          subtitle: Text('Il y a ${[2, 5, 24][i]} heures'),
-          trailing: const Icon(Icons.download),
-          onTap: () {},
-        )),
-      ],
-    );
-  }
-}
-
-/// ─── ONGLET TÉLÉCHARGEMENTS ACTIFS ───
-class _ActiveDownloadsTab extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _DownloadProgressTile(
-          title: 'Film_4K_HDR.mkv',
-          platform: 'YouTube',
-          progress: 0.67,
-          speed: '12.4 MB/s',
-          size: '1.8 / 2.5 GB',
-        ),
-        _DownloadProgressTile(
-          title: 'Musique_album.flac',
-          platform: 'YouTube',
-          progress: 0.35,
-          speed: '3.2 MB/s',
-          size: '15 / 45 MB',
-        ),
-        _DownloadProgressTile(
-          title: 'Clip_tiktok.mp4',
-          platform: 'TikTok',
-          progress: 0.92,
-          speed: '8.1 MB/s',
-          size: '27 / 30 MB',
+          children: platforms.map((p) {
+            return ActionChip(
+              avatar: Icon(p.icon, size: 16, color: p.color),
+              label: Text(p.name),
+              onPressed: () {
+                _urlController.text = 'https://${p.name.toLowerCase()}.com/';
+                _onUrlChanged();
+              },
+            );
+          }).toList(),
         ),
       ],
     );
   }
-}
 
-class _DownloadProgressTile extends StatelessWidget {
-  final String title;
-  final String platform;
-  final double progress;
-  final String speed;
-  final String size;
+  /// Onglet telechargements en cours
+  Widget _buildActiveTab(ColorScheme cs) {
+    return ref.watch(activeDownloadsProvider).when(
+          data: (downloads) {
+            if (downloads.isEmpty) return _buildEmptyState(cs, 'Aucun telechargement en cours');
+            return ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: downloads.length,
+              itemBuilder: (_, i) => _buildDownloadCard(cs, downloads[i]),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('Erreur: $e')),
+        );
+  }
 
-  const _DownloadProgressTile({
-    required this.title,
-    required this.platform,
-    required this.progress,
-    required this.speed,
-    required this.size,
-  });
+  /// Carte de telechargement actif
+  Widget _buildDownloadCard(ColorScheme cs, Map<String, dynamic> dl) {
+    final progress = (dl['progress'] as num?)?.toDouble() ?? 0.0;
+    final status = dl['status'] as String? ?? 'pending';
 
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
+                Icon(_getPlatformIcon(dl['platform'] as String? ?? ''),
+                    size: 20, color: cs.primary),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Text(title, style: Theme.of(context).textTheme.bodyLarge),
+                  child: Text(dl['title'] ?? 'Telechargement',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
-                Text(speed, style: TextStyle(
-                  color: cs.primary, fontWeight: FontWeight.w600)),
+                IconButton(
+                  onPressed: () {},
+                  icon: Icon(
+                    status == 'downloading' ? Icons.pause : Icons.play_arrow,
+                    size: 20,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.close, size: 20),
+                ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text('$platform • $size',
-                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
             const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 6,
-              ),
-            ),
+            LinearProgressIndicator(value: progress / 100),
             const SizedBox(height: 4),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('${(progress * 100).round()}%',
-                    style: TextStyle(fontSize: 12, color: cs.primary)),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.pause, size: 18),
-                      onPressed: () {},
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.cancel, size: 18),
-                      onPressed: () {},
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ],
-                ),
+                Text('${progress.toStringAsFixed(1)}%',
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+                Text(status,
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
               ],
             ),
           ],
@@ -462,112 +236,116 @@ class _DownloadProgressTile extends StatelessWidget {
       ),
     );
   }
-}
 
-/// ─── ONGLET TÉLÉCHARGEMENTS TERMINÉS ───
-class _CompletedDownloadsTab extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  /// Onglet telechargements termines
+  Widget _buildCompletedTab(ColorScheme cs) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.download_done, size: 64, color: cs.onSurfaceVariant),
+          const SizedBox(height: 16),
+          Text('Aucun telechargement termine',
+              style: TextStyle(color: cs.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        /// Stats
-        Row(
+  /// Etat vide
+  Widget _buildEmptyState(ColorScheme cs, String message) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.download, size: 64, color: cs.onSurfaceVariant),
+          const SizedBox(height: 16),
+          Text(message, style: TextStyle(color: cs.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+
+  /// Analyse l'URL saisie
+  void _analyzeUrl() {
+    final url = _urlController.text.trim();
+    if (url.isEmpty) return;
+    _showFormatSelector();
+  }
+
+  /// Bottom sheet de selection du format
+  void _showFormatSelector() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.3,
+        maxChildSize: 0.8,
+        expand: false,
+        builder: (_, scrollController) => Column(
           children: [
-            Expanded(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    children: [
-                      Text('47', style: Theme.of(context).textTheme.headlineSmall),
-                      Text('Fichiers', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-                    ],
-                  ),
-                ),
-              ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Choisir le format',
+                  style: Theme.of(context).textTheme.titleMedium),
             ),
             Expanded(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    children: [
-                      Text('18.5 GB', style: Theme.of(context).textTheme.headlineSmall),
-                      Text('Total', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-                    ],
-                  ),
-                ),
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  _buildFormatOption('Video 1080p', 'MP4 - 1920x1080', Icons.hd),
+                  _buildFormatOption('Video 720p', 'MP4 - 1280x720', Icons.hd),
+                  _buildFormatOption('Video 480p', 'MP4 - 854x480', Icons.sd),
+                  _buildFormatOption('Audio HQ', 'MP3 - 320 kbps', Icons.audiotrack),
+                  _buildFormatOption('Audio', 'MP3 - 128 kbps', Icons.audiotrack),
+                ],
               ),
             ),
           ],
         ),
-        const SizedBox(height: 16),
-
-        /// Fichiers terminés
-        ...List.generate(8, (i) => ListTile(
-          leading: Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              i % 3 == 0 ? Icons.movie : i % 3 == 1 ? Icons.music_note : Icons.image,
-              color: cs.onSurfaceVariant,
-            ),
-          ),
-          title: Text('Fichier_téléchargé_${i + 1}'),
-          subtitle: Text('${[2.5, 0.5, 0.045, 1.2, 0.8, 0.3, 5.1, 0.1][i]} GB • ${['MP4', 'MP4', 'FLAC', 'MKV', 'MP4', 'MP3', 'MKV', 'JPG'][i]}'),
-          trailing: PopupMenuButton(
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'open', child: Text('Ouvrir')),
-              const PopupMenuItem(value: 'share', child: Text('Partager')),
-              const PopupMenuItem(value: 'delete', child: Text('Supprimer')),
-            ],
-          ),
-        )),
-      ],
-    );
-  }
-}
-
-/// ─── TUile FORMAT ───
-class _FormatTile extends StatelessWidget {
-  final String quality;
-  final String details;
-  final bool isSelected;
-
-  const _FormatTile(this.quality, this.details, this.isSelected);
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Card(
-      color: isSelected ? cs.primaryContainer : null,
-      child: ListTile(
-        dense: true,
-        title: Text(quality, style: TextStyle(
-          fontWeight: isSelected ? FontWeight.w700 : FontWeight.normal,
-        )),
-        subtitle: Text(details, style: TextStyle(fontSize: 12)),
-        trailing: isSelected
-            ? Icon(Icons.check_circle, color: cs.primary)
-            : const Icon(Icons.radio_button_unchecked),
-        onTap: () {},
       ),
     );
   }
+
+  /// Option de format individuel
+  Widget _buildFormatOption(String title, String subtitle, IconData icon) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      onTap: () {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Telechargement lance: $title')),
+        );
+      },
+    );
+  }
+
+  /// Retourne l'icone correspondant a la plateforme
+  IconData _getPlatformIcon(String platform) {
+    switch (platform) {
+      case 'YouTube':
+        return Icons.play_circle_filled;
+      case 'TikTok':
+        return Icons.music_note;
+      case 'Instagram':
+        return Icons.camera_alt;
+      case 'Facebook':
+        return Icons.thumb_up;
+      case 'Twitter/X':
+        return Icons.tag;
+      default:
+        return Icons.public;
+    }
+  }
 }
 
-/// ─── INFO PLATEFORME ───
-class _PlatformInfo {
+/// Lien de plateforme
+class _PlatformLink {
   final String name;
   final IconData icon;
   final Color color;
-
-  const _PlatformInfo(this.name, this.icon, this.color);
+  const _PlatformLink(this.name, this.icon, this.color);
 }

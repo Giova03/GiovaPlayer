@@ -1,0 +1,10 @@
+normal
+sous-exposé
+sur-exposé
+flou
+bruité
+contraste_faible
+wb_chaud
+wb_froid
+visage_flou
+saturé

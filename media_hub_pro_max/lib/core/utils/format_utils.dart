@@ -1,99 +1,111 @@
-/// ─── UTILITAIRES PARTAGÉS ───
+// GiovaPlayer - Utilitaires de formatage
+// Contact: giobamos03@gmail.com | WhatsApp: +22670698070
 
-/// Formate une durée en millisecondes en string lisible
-/// Ex: 238000 → "3:58"
-String formatDuration(int ms) {
-  final totalSeconds = ms ~/ 1000;
-  final hours = totalSeconds ~/ 3600;
-  final minutes = (totalSeconds % 3600) ~/ 60;
-  final seconds = totalSeconds % 60;
+/// Utilitaires de formatage pour GiovaPlayer
+class FormatUtils {
+  FormatUtils._();
 
-  if (hours > 0) {
-    return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  /// Formate une duree en millisecondes vers HH:MM:SS ou MM:SS
+  static String formatDuration(int milliseconds) {
+    if (milliseconds <= 0) return '0:00';
+    final duration = Duration(milliseconds: milliseconds);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    if (hours > 0) {
+      return '${hours}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
-  return '$minutes:${seconds.toString().padLeft(2, '0')}';
-}
 
-/// Formate une taille en bytes en string lisible
-/// Ex: 2621440 → "2.5 MB"
-String formatFileSize(int bytes) {
-  if (bytes < 1024) return '$bytes B';
-  if (bytes < 1048576) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-  if (bytes < 1073741824) return '${(bytes / 1048576).toStringAsFixed(1)} MB';
-  return '${(bytes / 1073741824).toStringAsFixed(1)} GB';
-}
-
-/// Formate un bitrate en kbps
-/// Ex: 320 → "320 kbps", 1411 → "1411 kbps"
-String formatBitrate(int kbps) {
-  if (kbps >= 1000) {
-    return '${(kbps / 1000).toStringAsFixed(1)} Mbps';
+  /// Formate une taille de fichier en octets vers une chaine lisible
+  static String formatFileSize(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const units = ['B', 'Ko', 'Mo', 'Go', 'To'];
+    int unitIdx = 0;
+    double size = bytes.toDouble();
+    while (size >= 1024 && unitIdx < units.length - 1) {
+      size /= 1024;
+      unitIdx++;
+    }
+    return '${size.toStringAsFixed(unitIdx == 0 ? 0 : 1)} ${units[unitIdx]}';
   }
-  return '$kbps kbps';
-}
 
-/// Formate un sample rate en Hz
-/// Ex: 44100 → "44.1 kHz", 96000 → "96 kHz"
-String formatSampleRate(int hz) {
-  if (hz >= 1000) {
-    final khz = hz / 1000;
-    return '${khz == khz.roundToDouble() ? khz.round() : khz.toStringAsFixed(1)} kHz';
+  /// Formate une vitesse de telechargement (octets/s)
+  static String formatSpeed(int bytesPerSecond) {
+    if (bytesPerSecond <= 0) return '0 B/s';
+    if (bytesPerSecond < 1024) return '$bytesPerSecond B/s';
+    if (bytesPerSecond < 1024 * 1024) {
+      return '${(bytesPerSecond / 1024).toStringAsFixed(1)} Ko/s';
+    }
+    return '${(bytesPerSecond / (1024 * 1024)).toStringAsFixed(1)} Mo/s';
   }
-  return '$hz Hz';
-}
 
-/// Formate une vitesse de téléchargement
-/// Ex: 12582912 → "12.0 MB/s"
-String formatSpeed(int bytesPerSec) {
-  if (bytesPerSec < 1024) return '$bytesPerSec B/s';
-  if (bytesPerSec < 1048576) return '${(bytesPerSec / 1024).toStringAsFixed(1)} KB/s';
-  return '${(bytesPerSec / 1048576).toStringAsFixed(1)} MB/s';
-}
+  /// Formate un debit binaire (bits/s)
+  static String formatBitrate(int bitsPerSecond) {
+    if (bitsPerSecond <= 0) return '0 bps';
+    if (bitsPerSecond < 1000) return '$bitsPerSecond bps';
+    if (bitsPerSecond < 1000000) {
+      return '${(bitsPerSecond / 1000).toStringAsFixed(0)} kbps';
+    }
+    return '${(bitsPerSecond / 1000000).toStringAsFixed(1)} Mbps';
+  }
 
-/// Extrait l'extension d'un nom de fichier
-/// Ex: "song.flac" → "flac"
-String getExtension(String filename) {
-  final dot = filename.lastIndexOf('.');
-  if (dot == -1) return '';
-  return filename.substring(dot + 1).toLowerCase();
-}
+  /// Formate un taux d'echantillonnage (Hz)
+  static String formatSampleRate(int hz) {
+    if (hz <= 0) return '0 Hz';
+    if (hz < 1000) return '$hz Hz';
+    return '${(hz / 1000).toStringAsFixed(1)} kHz';
+  }
 
-/// Vérifie si un fichier est un audio supporté
-bool isAudioFile(String path) {
-  final ext = getExtension(path);
-  return {'flac', 'wav', 'dsf', 'dff', 'mp3', 'aac', 'ogg',
-          'opus', 'wma', 'alac', 'm4a', 'ape'}.contains(ext);
-}
+  /// Extrait l'extension d'un chemin de fichier
+  static String getExtension(String path) {
+    final dot = path.lastIndexOf('.');
+    if (dot < 0 || dot == path.length - 1) return '';
+    return path.substring(dot + 1).toLowerCase();
+  }
 
-/// Vérifie si un fichier est une vidéo supportée
-bool isVideoFile(String path) {
-  final ext = getExtension(path);
-  return {'mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv',
-          'webm', 'm4v', '3gp', 'ts'}.contains(ext);
-}
+  /// Verifie si un fichier est un fichier audio
+  static bool isAudioFile(String path) {
+    const audioExts = {
+      'mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a',
+      'opus', 'aiff', 'alac', 'ape', 'dsd', 'mid', 'midi',
+    };
+    return audioExts.contains(getExtension(path));
+  }
 
-/// Vérifie si un fichier est une image supportée
-bool isImageFile(String path) {
-  final ext = getExtension(path);
-  return {'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',
-          'tiff', 'heic', 'heif', 'raw', 'dng'}.contains(ext);
-}
+  /// Verifie si un fichier est un fichier video
+  static bool isVideoFile(String path) {
+    const videoExts = {
+      'mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm',
+      '3gp', 'm4v', 'ts', 'mpg', 'mpeg', 'vob', 'ogv',
+    };
+    return videoExts.contains(getExtension(path));
+  }
 
-/// Détecte la plateforme depuis une URL
-/// Retourne le nom de la plateforme ou 'unknown'
-String detectPlatform(String url) {
-  final lower = url.toLowerCase();
-  if (lower.contains('youtube.com') || lower.contains('youtu.be')) return 'youtube';
-  if (lower.contains('tiktok.com')) return 'tiktok';
-  if (lower.contains('instagram.com')) return 'instagram';
-  if (lower.contains('facebook.com') || lower.contains('fb.watch')) return 'facebook';
-  if (lower.contains('twitter.com') || lower.contains('x.com')) return 'twitter';
-  if (lower.startsWith('magnet:') || lower.endsWith('.torrent')) return 'torrent';
-  return 'web';
-}
+  /// Verifie si un fichier est un fichier image
+  static bool isImageFile(String path) {
+    const imageExts = {
+      'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff',
+      'tif', 'svg', 'ico', 'heic', 'heif', 'raw', 'cr2',
+    };
+    return imageExts.contains(getExtension(path));
+  }
 
-/// Tronque un texte avec ellipsis
-String truncate(String text, int maxLength) {
-  if (text.length <= maxLength) return text;
-  return '${text.substring(0, maxLength - 3)}...';
+  /// Detecte la plateforme a partir d'une URL de telechargement
+  static String detectPlatform(String url) {
+    final lower = url.toLowerCase();
+    if (lower.contains('youtube.com') || lower.contains('youtu.be')) {
+      return 'YouTube';
+    }
+    if (lower.contains('tiktok.com')) return 'TikTok';
+    if (lower.contains('instagram.com')) return 'Instagram';
+    if (lower.contains('facebook.com') || lower.contains('fb.watch')) {
+      return 'Facebook';
+    }
+    if (lower.contains('twitter.com') || lower.contains('x.com')) {
+      return 'Twitter/X';
+    }
+    return 'Inconnu';
+  }
 }
