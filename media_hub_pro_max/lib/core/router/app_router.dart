@@ -1,251 +1,115 @@
-// GiovaPlayer - Routeur principal avec GoRouter et ShellRoute
-// Contact: giobamos03@gmail.com | WhatsApp: +22670698070
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../theme/app_theme.dart';
-import '../providers/app_providers.dart';
+import 'package:go_router/go_router.dart';
 import '../../features/audio/screens/audio_player_screen.dart';
 import '../../features/video/screens/video_player_screen.dart';
 import '../../features/gallery/screens/gallery_screen.dart';
+import '../../features/ia_photo/screens/ia_photo_fix_screen.dart';
 import '../../features/vault/screens/vault_screen.dart';
 import '../../features/downloader/screens/downloader_screen.dart';
 import '../../features/tools/screens/tools_screen.dart';
+import '../providers/app_providers.dart';
 
-/// Provider du routeur GiovaPlayer
-final appRouterProvider = Provider<GoRouter>((ref) {
-  return GoRouter(
-    initialLocation: '/accueil',
-    routes: [
-      ShellRoute(
-        builder: (context, state, child) {
-          return _ScaffoldWithNavBar(child: child);
-        },
-        routes: [
-          GoRoute(
-            path: '/accueil',
-            builder: (context, state) => const _HomeDashboard(),
-          ),
-          GoRoute(
-            path: '/audio',
-            builder: (context, state) => const AudioPlayerScreen(),
-          ),
-          GoRoute(
-            path: '/video',
-            builder: (context, state) => const VideoPlayerScreen(),
-          ),
-          GoRoute(
-            path: '/galerie',
-            builder: (context, state) => const GalleryScreen(),
-          ),
-          GoRoute(
-            path: '/coffre',
-            builder: (context, state) => const VaultScreen(),
-          ),
-          GoRoute(
-            path: '/download',
-            builder: (context, state) => const DownloaderScreen(),
-          ),
-          GoRoute(
-            path: '/outils',
-            builder: (context, state) => const ToolsScreen(),
-          ),
-        ],
-      ),
-    ],
-  );
-});
+final appRouterProvider = Provider<GoRouter>((ref) => GoRouter(
+  initialLocation: '/',
+  routes: [
+    ShellRoute(builder: (c, s, child) => _Shell(child: child), routes: [
+      GoRoute(path: '/', builder: (_, __) => const _Home()),
+      GoRoute(path: '/audio', builder: (_, __) => const AudioPlayerScreen()),
+      GoRoute(path: '/video', builder: (_, __) => const VideoPlayerScreen()),
+      GoRoute(path: '/gallery', builder: (_, __) => const GalleryScreen()),
+      GoRoute(path: '/vault', builder: (_, __) => const VaultScreen()),
+      GoRoute(path: '/downloader', builder: (_, __) => const DownloaderScreen()),
+      GoRoute(path: '/tools', builder: (_, __) => const ToolsScreen()),
+    ]),
+    GoRoute(path: '/ia-photo', builder: (_, __) => const IaPhotoFixScreen()),
+  ],
+));
 
-/// Onglets de navigation principaux
-class _NavItem {
-  final String path;
-  final String label;
-  final IconData icon;
-  final IconData activeIcon;
-
-  const _NavItem({
-    required this.path,
-    required this.label,
-    required this.icon,
-    required this.activeIcon,
-  });
-}
-
-/// Liste des 7 onglets de navigation
-const _navItems = [
-  _NavItem(path: '/accueil', label: 'Accueil', icon: Icons.home_outlined, activeIcon: Icons.home),
-  _NavItem(path: '/audio', label: 'Audio', icon: Icons.music_note_outlined, activeIcon: Icons.music_note),
-  _NavItem(path: '/video', label: 'Video', icon: Icons.play_circle_outline, activeIcon: Icons.play_circle),
-  _NavItem(path: '/galerie', label: 'Galerie', icon: Icons.photo_library_outlined, activeIcon: Icons.photo_library),
-  _NavItem(path: '/coffre', label: 'Coffre', icon: Icons.lock_outline, activeIcon: Icons.lock),
-  _NavItem(path: '/download', label: 'Download', icon: Icons.download_outlined, activeIcon: Icons.download),
-  _NavItem(path: '/outils', label: 'Outils', icon: Icons.build_outlined, activeIcon: Icons.build),
-];
-
-/// Scaffold principal avec la barre de navigation inferieure
-class _ScaffoldWithNavBar extends StatelessWidget {
+class _Shell extends ConsumerWidget {
   final Widget child;
-  const _ScaffoldWithNavBar({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: child,
-      bottomNavigationBar: NavigationBar(
-        destinations: _navItems
-            .map((n) => NavigationDestination(
-                  icon: Icon(n.icon),
-                  selectedIcon: Icon(n.activeIcon),
-                  label: n.label,
-                ))
-            .toList(),
-        onDestinationSelected: (idx) => context.go(_navItems[idx].path),
-        selectedIndex: _currentIndex(context),
-      ),
-    );
-  }
-
-  /// Calcule l'index de l'onglet actif
-  int _currentIndex(BuildContext context) {
-    final location = GoRouterState.of(context).uri.path;
-    for (var i = 0; i < _navItems.length; i++) {
-      if (location.startsWith(_navItems[i].path)) return i;
-    }
-    return 0;
-  }
-}
-
-/// Tableau de bord principal avec branding GiovaPlayer
-class _HomeDashboard extends ConsumerWidget {
-  const _HomeDashboard();
-
+  const _Shell({required this.child});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('GiovaPlayer')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildBrandingCard(cs, theme),
-            const SizedBox(height: 20),
-            _buildModuleGrid(context, cs),
-            const SizedBox(height: 20),
-            _buildIaSuggestions(cs),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Carte de branding GiovaPlayer
-  Widget _buildBrandingCard(ColorScheme cs, ThemeData theme) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Icon(Icons.play_circle_filled, size: 56, color: cs.primary),
-            const SizedBox(height: 12),
-            Text('GiovaPlayer', style: theme.textTheme.headlineMedium),
-            const SizedBox(height: 4),
-            Text(
-              '6 applications en 1',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: cs.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'giobamos03@gmail.com | WhatsApp: +22670698070',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Grille des modules principaux
-  Widget _buildModuleGrid(BuildContext context, ColorScheme cs) {
-    final modules = [
-      _ModuleItem(Icons.music_note, 'Audio', '/audio'),
-      _ModuleItem(Icons.play_circle, 'Video', '/video'),
-      _ModuleItem(Icons.photo_library, 'Galerie', '/galerie'),
-      _ModuleItem(Icons.lock, 'Coffre', '/coffre'),
-      _ModuleItem(Icons.download, 'Download', '/download'),
-      _ModuleItem(Icons.build, 'Outils', '/outils'),
-    ];
-
-    return GridView.count(
-      crossAxisCount: 3,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      children: modules.map((m) {
-        return Card(
-          child: InkWell(
-            onTap: () => context.go(m.route),
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(m.icon, size: 32, color: cs.primary),
-                  const SizedBox(height: 8),
-                  Text(m.label, style: Theme.of(context).textTheme.labelLarge),
-                ],
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  /// Suggestions IA sur le tableau de bord
-  Widget _buildIaSuggestions(ColorScheme cs) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Suggestions IA', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Card(
-          child: ListTile(
-            leading: Icon(Icons.auto_fix_high, color: cs.primary),
-            title: const Text('Amelioration photo IA'),
-            subtitle: const Text('Optimisez vos photos automatiquement'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.go('/galerie'),
-          ),
-        ),
-        Card(
-          child: ListTile(
-            leading: Icon(Icons.subtitles, color: cs.primary),
-            title: const Text('Sous-titres IA'),
-            subtitle: const Text('Generer des sous-titres pour vos videos'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.go('/video'),
-          ),
-        ),
+    final loc = GoRouterState.of(context).uri.path;
+    final idx = switch (loc) {
+      '/' => 0, '/audio' => 1, '/video' => 2, '/gallery' => 3,
+      '/vault' => 4, '/downloader' => 5, '/tools' => 6, _ => 0,
+    };
+    return Scaffold(body: child, bottomNavigationBar: NavigationBar(
+      selectedIndex: idx,
+      onDestinationSelected: (i) => context.go(switch(i){0=>'/',1=>'/audio',2=>'/video',3=>'/gallery',4=>'/vault',5=>'/downloader',6=>'/tools',_=>'/'}),
+      destinations: const [
+        NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Accueil'),
+        NavigationDestination(icon: Icon(Icons.headphones_outlined), selectedIcon: Icon(Icons.headphones), label: 'Audio'),
+        NavigationDestination(icon: Icon(Icons.play_circle_outline), selectedIcon: Icon(Icons.play_circle), label: 'Video'),
+        NavigationDestination(icon: Icon(Icons.photo_library_outlined), selectedIcon: Icon(Icons.photo_library), label: 'Galerie'),
+        NavigationDestination(icon: Icon(Icons.lock_outline), selectedIcon: Icon(Icons.lock), label: 'Coffre'),
+        NavigationDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: 'Download'),
+        NavigationDestination(icon: Icon(Icons.build_outlined), selectedIcon: Icon(Icons.build), label: 'Outils'),
       ],
-    );
+    ));
   }
 }
 
-/// Element de module pour la grille d'accueil
-class _ModuleItem {
-  final IconData icon;
-  final String label;
-  final String route;
-  const _ModuleItem(this.icon, this.label, this.route);
+class _Home extends ConsumerWidget {
+  const _Home();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(appBar: AppBar(title: const Text('GiovaPlayer'), actions: [
+      IconButton(icon: Icon(ref.watch(isDarkModeProvider) ? Icons.light_mode : Icons.dark_mode),
+        onPressed: () => ref.read(isDarkModeProvider.notifier).state = !ref.read(isDarkModeProvider)),
+    ]), body: ListView(padding: const EdgeInsets.all(16), children: [
+      Card(color: cs.primaryContainer, child: Padding(padding: const EdgeInsets.all(20),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Icon(Icons.auto_awesome, color: cs.onPrimaryContainer), const SizedBox(width: 12),
+            Expanded(child: Text('GiovaPlayer v2.0', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: cs.onPrimaryContainer)))]),
+          const SizedBox(height: 8),
+          Text('6 apps en 1 • 100% offline • Vos donnees restent sur votre appareil',
+            style: TextStyle(color: cs.onPrimaryContainer.withValues(alpha:0.8), fontSize: 13)),
+          const SizedBox(height: 4),
+          Text('Contact: giobamos03@gmail.com | WhatsApp: +22670698070',
+            style: TextStyle(color: cs.onPrimaryContainer.withValues(alpha:0.6), fontSize: 11)),
+        ]))),
+      const SizedBox(height: 24),
+      Text('Modules', style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 12),
+      GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.5,
+        children: [
+          _Mod('Audio', Icons.headphones, '/audio', 'Hi-Res FLAC/DSF', cs),
+          _Mod('Video', Icons.play_circle, '/video', '8K HDR10+ Dolby', cs),
+          _Mod('Galerie', Icons.photo_library, '/gallery', 'Tri IA + Edition', cs),
+          _Mod('Coffre', Icons.lock, '/vault', 'AES-256 + PIN', cs),
+          _Mod('Download', Icons.download, '/downloader', 'YT/TikTok/Torrent', cs),
+          _Mod('Outils', Icons.build, '/tools', 'Convertisseur+Clean', cs),
+        ]),
+      const SizedBox(height: 24),
+      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [Icon(Icons.security, color: cs.tertiary), const SizedBox(width: 12),
+          Expanded(child: Text('Protection des donnees', style: Theme.of(context).textTheme.titleSmall))]),
+        const SizedBox(height: 8),
+        const Text('- Aucune donnee collectee ou envoyee a un serveur', style: TextStyle(fontSize: 12)),
+        const Text('- Toutes les donnees restent sur votre appareil', style: TextStyle(fontSize: 12)),
+        const Text('- Chiffrement AES-256 pour le coffre-fort', style: TextStyle(fontSize: 12)),
+        const Text('- Aucun analytics, aucun tracking', style: TextStyle(fontSize: 12)),
+        const Text('- Permissions demandees uniquement si necessaire', style: TextStyle(fontSize: 12)),
+        const Text('- Droit de suppression totale des donnees', style: TextStyle(fontSize: 12)),
+      ]))),
+    ]));
+  }
+}
+
+class _Mod extends StatelessWidget {
+  final String t; final IconData i; final String r; final String s; final ColorScheme cs;
+  const _Mod(this.t, this.i, this.r, this.s, this.cs);
+  @override
+  Widget build(BuildContext context) => Card(child: InkWell(onTap: () => context.go(r),
+    borderRadius: BorderRadius.circular(16),
+    child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+      Icon(i, size: 32, color: cs.primary), const SizedBox(height: 8),
+      Text(t, style: const TextStyle(fontWeight: FontWeight.w600)),
+      const SizedBox(height: 2), Text(s, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+    ]))));
 }

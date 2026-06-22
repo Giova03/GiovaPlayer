@@ -1,4 +1,4 @@
-# media_hub_pro_max
+# giova_player
 
 A new Flutter project.
 

@@ -1,14 +1,9 @@
-/// ─── BASE DE DONNÉES PERSISTANTE ───
-/// Utilise sqflite + path_provider en production
-/// Mode démo : stockage en mémoire (Map) avec interface compatible
-/// Pour activer sqflite : ajouter les dépendances au pubspec.yaml
-
-import 'dart:convert';
-
+/// Base de donnees GiovaPlayer - Stockage local uniquement
+/// SECURITE: Aucune donnee n'est transmise en reseau.
+/// Toutes les donnees personnelles restent sur l'appareil.
 class AppDatabase {
   static AppDatabase? _instance;
   static AppDatabase get instance => _instance ??= AppDatabase._();
-
   final Map<String, List<Map<String, dynamic>>> _tables = {};
 
   AppDatabase._() {
@@ -17,107 +12,66 @@ class AppDatabase {
     _tables['download_tasks'] = [];
     _tables['notes'] = [];
     _tables['passwords'] = [];
-    _tables['eq_presets'] = [];
     _initSampleData();
   }
 
-  /// Initialise des données d'exemple pour la démo
   void _initSampleData() {
-    // Médias audio
-    for (int i = 1; i <= 8; i++) {
+    final tracks = [
+      ('Ambiance Nocturne', 'DJ Giova', 'FLAC 24bit/96kHz', 'Rock', 128.0),
+      ('Soleil Levant', 'Ama Giova', 'FLAC 24bit/192kHz', 'Jazz', 95.0),
+      ('Rythme Urbain', 'Giova Crew', 'DSF 1bit/2.8MHz', 'Electro', 140.0),
+      ('Melodie Douce', 'Orchestre Bamo', 'FLAC 16bit/44kHz', 'Classique', 72.0),
+      ('Afro Beat', 'DJ Giova', 'WAV 24bit/48kHz', 'Afro', 110.0),
+      ('Solitude', 'Piano Giova', 'FLAC 24bit/96kHz', 'Pop', 88.0),
+      ('Energie Pure', 'Giova Bass', 'MP3 320kbps', 'Hip-Hop', 135.0),
+      ('Horizon', 'Ama Giova', 'FLAC 24bit/96kHz', 'R&B', 120.0),
+    ];
+    for (int i = 0; i < tracks.length; i++) {
       _tables['media_items']!.add({
-        'id': i,
-        'title': 'Morceau $i',
-        'artist': 'Artiste $i',
-        'album': 'Album ${((i - 1) ~/ 3) + 1}',
-        'path': '/storage/music/track_$i.flac',
-        'type': 'audio',
-        'duration': 180000 + (i * 30000),
-        'size': 35000000 + (i * 5000000),
-        'bitrate': [1411, 320, 1411, 969, 1411, 320, 969, 1411][i - 1],
-        'sample_rate': [96000, 44100, 96000, 48000, 96000, 44100, 48000, 96000][i - 1],
-        'format': ['FLAC', 'MP3', 'FLAC', 'DSF', 'FLAC', 'MP3', 'WAV', 'FLAC'][i - 1],
-        'genre': ['Rock', 'Jazz', 'Électro', 'Classique', 'Hip-Hop', 'Pop', 'Rock', 'Jazz'][i - 1],
-        'bpm': [128.0, 95.0, 140.0, 72.0, 110.0, 120.0, 135.0, 88.0][i - 1],
+        'id': i + 1, 'title': tracks[i].$1, 'artist': tracks[i].$2,
+        'path': '/storage/music/track_${i+1}.flac', 'type': 'audio',
+        'duration': 180000 + i * 25000, 'size': 30000000 + i * 5000000,
+        'format': tracks[i].$3, 'genre': tracks[i].$4, 'bpm': tracks[i].$5,
         'date_added': DateTime.now().subtract(Duration(days: i)).millisecondsSinceEpoch,
       });
     }
-    // Médias vidéo
-    for (int i = 1; i <= 5; i++) {
+    final videos = [
+      ('Film_4K_HDR.mkv', 'H.265 3840x2160 HDR10+ 23.976fps', 2500000000, '4K'),
+      ('Serie_S01E01.mp4', 'H.264 1920x1080 AAC 5.1', 800000000, '1080p'),
+      ('Clip_Musical.mkv', 'H.265 3840x2160 FLAC', 1200000000, '4K'),
+      ('Docu_Nature.mp4', 'H.264 1920x1080 Dolby Vision', 500000000, '1080p'),
+      ('Concert_Live.mkv', 'H.265 3840x2160 ATMOS', 3200000000, '4K'),
+    ];
+    for (int i = 0; i < videos.length; i++) {
       _tables['media_items']!.add({
-        'id': 8 + i,
-        'title': 'Vidéo $i',
-        'artist': null,
-        'path': '/storage/video/film_$i.mkv',
-        'type': 'video',
-        'duration': 5400000 + (i * 1800000),
-        'size': [2500000000, 5100000000, 1800000000, 900000000, 3200000000][i - 1],
-        'format': ['MKV', 'MP4', 'MKV', 'MP4', 'MKV'][i - 1],
-        'date_added': DateTime.now().subtract(Duration(days: i * 2)).millisecondsSinceEpoch,
+        'id': 8 + i + 1, 'title': videos[i].$1, 'artist': null,
+        'path': '/storage/video/film_${i+1}.mkv', 'type': 'video',
+        'duration': 5400000 + i * 1800000, 'size': videos[i].$3,
+        'format': videos[i].$2, 'date_added': DateTime.now().subtract(Duration(days: i*2)).millisecondsSinceEpoch,
       });
     }
-    // Items vault
-    _tables['vault_items']!.addAll([
-      {'id': 1, 'original_name': 'photo_vacances.jpg', 'type': 'photo', 'size': 4500000, 'is_decoy': 0, 'date_added': DateTime.now().millisecondsSinceEpoch},
-      {'id': 2, 'original_name': 'document_secret.pdf', 'type': 'file', 'size': 1200000, 'is_decoy': 0, 'date_added': DateTime.now().millisecondsSinceEpoch},
-      {'id': 3, 'original_name': 'note_privee.txt', 'type': 'note', 'size': 5000, 'is_decoy': 0, 'date_added': DateTime.now().millisecondsSinceEpoch},
-    ]);
   }
 
-  /// Opérations CRUD génériques
-  List<Map<String, dynamic>> query(String table) =>
-      List.from(_tables[table] ?? []);
-
-  int insert(String table, Map<String, dynamic> item) {
-    final list = _tables.putIfAbsent(table, () => []);
-    final id = list.isEmpty ? 1 : (list.last['id'] as int) + 1;
-    item['id'] = id;
-    list.add(item);
-    return id;
-  }
-
-  void delete(String table, int id) {
-    _tables[table]?.removeWhere((item) => item['id'] == id);
-  }
-
-  void update(String table, int id, Map<String, dynamic> values) {
-    final list = _tables[table];
-    if (list == null) return;
-    final idx = list.indexWhere((item) => item['id'] == id);
-    if (idx >= 0) list[idx].addAll(values);
-  }
-
-  /// Raccourcis métier
   List<Map<String, dynamic>> getRecentMedia({int limit = 20}) {
-    final items = query('media_items');
-    items.sort((a, b) =>
-        (b['date_added'] as int).compareTo(a['date_added'] as int));
-    return items.take(limit).toList();
+    final items = List.from(_tables['media_items'] ?? []);
+    items.sort((a, b) => (b['date_added'] as int).compareTo(a['date_added'] as int));
+    return items.cast<Map<String, dynamic>>().take(limit).toList();
   }
-
-  List<Map<String, dynamic>> getMediaByType(String type) {
-    return query('media_items')
-        .where((m) => m['type'] == type)
-        .toList();
-  }
-
-  List<Map<String, dynamic>> getVaultItems() => query('vault_items');
-
-  List<Map<String, dynamic>> getActiveDownloads() =>
-      query('download_tasks')
-          .where((d) => d['status'] == 'active')
-          .toList();
-
+  List<Map<String, dynamic>> getMediaByType(String type) =>
+    (_tables['media_items'] ?? []).where((m) => m['type'] == type).toList();
+  List<Map<String, dynamic>> getVaultItems() => List.from(_tables['vault_items'] ?? []);
   Map<String, int> getStorageStats() {
     final stats = <String, int>{};
-    for (final item in query('media_items')) {
-      final type = item['type'] as String? ?? 'other';
-      final size = item['size'] as int? ?? 0;
-      stats[type] = (stats[type] ?? 0) + size;
+    for (final item in _tables['media_items'] ?? []) {
+      final t = item['type'] as String? ?? 'other';
+      stats[t] = (stats[t] ?? 0) + (item['size'] as int? ?? 0);
     }
     return stats;
   }
-
-  int get totalCount =>
-      _tables.values.fold(0, (sum, list) => sum + list.length);
+  int insert(String table, Map<String, dynamic> item) {
+    final list = _tables.putIfAbsent(table, () => []);
+    final id = list.isEmpty ? 1 : (list.last['id'] as int) + 1;
+    item['id'] = id; list.add(item); return id;
+  }
+  void delete(String table, int id) => _tables[table]?.removeWhere((i) => i['id'] == id);
 }

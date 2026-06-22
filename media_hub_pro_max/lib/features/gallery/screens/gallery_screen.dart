@@ -1,250 +1,77 @@
-// GiovaPlayer - Galerie photo avec tri IA
-// Contact: giobamos03@gmail.com | WhatsApp: +22670698070
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ia_photo/screens/ia_photo_fix_screen.dart';
-import '../../../core/providers/app_providers.dart';
 
-/// Ecran de la galerie photo GiovaPlayer
 class GalleryScreen extends ConsumerStatefulWidget {
   const GalleryScreen({super.key});
-
   @override
-  ConsumerState<GalleryScreen> createState() => _GalleryScreenState();
+  ConsumerState<GalleryScreen> createState() => _S();
 }
-
-class _GalleryScreenState extends ConsumerState<GalleryScreen> {
-  bool _isMultiSelect = false;
-  final Set<int> _selectedIndices = {};
-  String _activeSort = 'Tout';
-
-  final List<_SortChip> _sortChips = [
-    _SortChip('Tout', Icons.photo_library),
-    _SortChip('Visages', Icons.face),
-    _SortChip('Objets', Icons.category),
-    _SortChip('OCR', Icons.text_fields),
-    _SortChip('Emotions', Icons.sentiment_satisfied),
-    _SortChip('GPS', Icons.location_on),
-    _SortChip('Doublons', Icons.content_copy),
-  ];
+class _S extends ConsumerState<GalleryScreen> {
+  bool _sel = false;
+  final Set<int> _selSet = {};
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: _isMultiSelect
-            ? Text('${_selectedIndices.length} selectionne(s)')
-            : const Text('Galerie'),
-        actions: _buildAppBarActions(),
-      ),
-      body: Column(
-        children: [
-          _buildSortChips(cs),
-          Expanded(child: _buildPhotoGrid(cs)),
-        ],
-      ),
-      floatingActionButton: _buildFab(cs),
+    return Scaffold(appBar: AppBar(title: _sel ? Text('${_selSet.length} selectionnee(s)') : const Text('Galerie IA'),
+      actions: [
+        IconButton(icon: const Icon(Icons.search), onPressed: () => showSearch(context: context, delegate: _Search())),
+        IconButton(icon: const Icon(Icons.auto_awesome), onPressed: _aiSort),
+        IconButton(icon: Icon(_sel ? Icons.close : Icons.select_all),
+          onPressed: () => setState(() { _sel = !_sel; _selSet.clear(); })),
+      ]),
+      body: CustomScrollView(slivers: [
+        SliverToBoxAdapter(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          color: cs.primaryContainer.withValues(alpha:0.3),
+          child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+            ActionChip(avatar: const Icon(Icons.auto_fix_high, size: 16), label: const Text('3 photos a corriger'), onPressed: (){}),
+            const SizedBox(width: 8),
+            ActionChip(avatar: const Icon(Icons.content_copy, size: 16), label: const Text('15 doublons'), onPressed: (){}),
+            const SizedBox(width: 8),
+            ActionChip(avatar: const Icon(Icons.face, size: 16), label: const Text('Visages detectes'), onPressed: (){}),
+          ])))),
+        SliverPadding(padding: const EdgeInsets.all(4), sliver: SliverGrid(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
+          delegate: SliverChildBuilderDelegate((ctx, i) => GestureDetector(
+            onTap: () { if (_sel) setState(() { _selSet.contains(i) ? _selSet.remove(i) : _selSet.add(i); }); },
+            onLongPress: () { if (!_sel) setState(() { _sel = true; _selSet.add(i); }); },
+            child: Stack(fit: StackFit.expand, children: [
+              Container(color: Color.lerp(cs.surfaceContainerHighest, cs.primary, (i%7)*0.05),
+                child: Icon(Icons.photo, color: cs.onSurfaceVariant.withValues(alpha:0.5))),
+              if (_sel && _selSet.contains(i)) Positioned(top: 4, right: 4, child: Container(width: 22, height: 22,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary),
+                child: const Icon(Icons.check, size: 14, color: Colors.white))),
+            ]),
+          ), childCount: 30),
+        )),
+      ]),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IaPhotoFixScreen())),
+        icon: const Icon(Icons.auto_fix_high), label: const Text('IA Photo Fix')),
     );
   }
 
-  /// Actions de l'AppBar selon le mode
-  List<Widget> _buildAppBarActions() {
-    if (_isMultiSelect) {
-      return [
-        IconButton(
-          onPressed: () => setState(() {
-            _isMultiSelect = false;
-            _selectedIndices.clear();
-          }),
-          icon: const Icon(Icons.close),
-        ),
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.delete_outline),
-        ),
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.lock_outline),
-        ),
-      ];
-    }
-    return [
-      IconButton(
-        onPressed: () => showSearch(
-          context: context,
-          delegate: _SemanticSearchDelegate(),
-        ),
-        icon: const Icon(Icons.search),
-      ),
-      IconButton(
-        onPressed: () {},
-        icon: const Icon(Icons.sort),
-      ),
-    ];
-  }
-
-  /// Chips de tri IA
-  Widget _buildSortChips(ColorScheme cs) {
-    return SizedBox(
-      height: 48,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        itemCount: _sortChips.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 6),
-        itemBuilder: (_, i) {
-          final chip = _sortChips[i];
-          final isActive = _activeSort == chip.label;
-          return FilterChip(
-            selected: isActive,
-            avatar: Icon(chip.icon, size: 16),
-            label: Text(chip.label),
-            onSelected: (_) => setState(() => _activeSort = chip.label),
-          );
-        },
-      ),
-    );
-  }
-
-  /// Grille de photos
-  Widget _buildPhotoGrid(ColorScheme cs) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(4),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 2,
-        crossAxisSpacing: 2,
-      ),
-      itemCount: 30,
-      itemBuilder: (_, i) => _buildPhotoItem(cs, i),
-    );
-  }
-
-  /// Element de photo individuelle
-  Widget _buildPhotoItem(ColorScheme cs, int index) {
-    final isSelected = _selectedIndices.contains(index);
-    return GestureDetector(
-      onLongPress: () => _toggleMultiSelect(index),
-      onTap: () {
-        if (_isMultiSelect) {
-          _toggleMultiSelect(index);
-        }
-      },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Container(
-            color: cs.surfaceContainerHighest,
-            child: Icon(Icons.image, color: cs.onSurfaceVariant, size: 36),
-          ),
-          if (isSelected)
-            Container(
-              color: cs.primary.withValues(alpha: 0.3),
-              child: Icon(Icons.check_circle, color: cs.primary, size: 32),
-            ),
-          if (_isMultiSelect && !isSelected)
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.3),
-                  width: 1,
-                ),
-              ),
-              child: Icon(Icons.radio_button_unchecked,
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// Bascule la selection multiple
-  void _toggleMultiSelect(int index) {
-    setState(() {
-      _isMultiSelect = true;
-      if (_selectedIndices.contains(index)) {
-        _selectedIndices.remove(index);
-        if (_selectedIndices.isEmpty) _isMultiSelect = false;
-      } else {
-        _selectedIndices.add(index);
-      }
-    });
-  }
-
-  /// Bouton flottant pour IA Photo Fix
-  Widget _buildFab(ColorScheme cs) {
-    return FloatingActionButton.extended(
-      onPressed: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const IaPhotoFixScreen()),
-        );
-      },
-      icon: const Icon(Icons.auto_fix_high),
-      label: const Text('IA Photo Fix'),
-    );
-  }
+  void _aiSort() => showModalBottomSheet(context: context, builder: (_) => ListView(padding: const EdgeInsets.all(24), shrinkWrap: true, children: [
+    Text('Tri IA', style: Theme.of(context).textTheme.titleLarge),
+    ...[(Icons.face,'Visages','42 photos'),(Icons.place,'Lieux GPS','8 lieux'),(Icons.category,'Objets','Chat, Voiture...'),
+      (Icons.emoji_emotions,'Emotions','Heureux, Sérieux'),(Icons.text_fields,'Texte OCR','12 photos'),
+      (Icons.content_copy,'Doublons','15 trouves'),(Icons.blur_on,'Floues','8 a supprimer')].map((t) =>
+      ListTile(leading: Icon(t.$1, color: Theme.of(context).colorScheme.primary), title: Text(t.$2), subtitle: Text(t.$3))),
+  ]));
 }
 
-/// Delegate de recherche semantique
-class _SemanticSearchDelegate extends SearchDelegate<String> {
-  @override
-  List<Widget> buildActions(BuildContext context) {
-    return [
-      IconButton(
-        onPressed: () => query = '',
-        icon: const Icon(Icons.clear),
-      ),
-    ];
-  }
+class _Search extends SearchDelegate<String> {
+  @override List<Widget> buildActions(BuildContext c) => [IconButton(icon: const Icon(Icons.clear), onPressed: () => query = '')];
+  @override Widget buildLeading(BuildContext c) => IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(c, ''));
+  @override Widget buildResults(BuildContext c) => _res(c);
+  @override Widget buildSuggestions(BuildContext c) => query.isEmpty ? ListView(padding: const EdgeInsets.all(24), children: [
+    Text('Recherche semantique IA', style: Theme.of(c).textTheme.titleMedium),
+    const SizedBox(height: 12),
+    ...['photo moi en costume 2022 plage','chat noir sur canape','photos coucher du soleil'].map((q) =>
+      Padding(padding: const EdgeInsets.only(bottom: 8), child: ActionChip(avatar: const Icon(Icons.auto_awesome, size: 16), label: Text(q), onPressed: (){}))),
+  ]): _res(c);
 
-  @override
-  Widget buildLeading(BuildContext context) {
-    return IconButton(
-      onPressed: () => close(context, ''),
-      icon: const Icon(Icons.arrow_back),
-    );
-  }
-
-  @override
-  Widget buildResults(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.search, size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          Text('Recherche semantique: "$query"'),
-          const SizedBox(height: 8),
-          Text('Analyse IA en cours...',
-              style: TextStyle(color: Theme.of(context).colorScheme.primary)),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget buildSuggestions(BuildContext context) {
-    final suggestions = [
-      'Photos de famille', 'Plage au coucher du soleil',
-      'Documents avec texte', 'Visages souriants',
-      'Photos en exterieur', 'Images en haute resolution',
-    ];
-    return ListView.builder(
-      itemCount: suggestions.length,
-      itemBuilder: (_, i) => ListTile(
-        leading: const Icon(Icons.auto_awesome),
-        title: Text(suggestions[i]),
-        onTap: () => query = suggestions[i],
-      ),
-    );
-  }
-}
-
-/// Chip de tri IA
-class _SortChip {
-  final String label;
-  final IconData icon;
-  const _SortChip(this.label, this.icon);
+  Widget _res(BuildContext c) => GridView.count(crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+    children: List.generate(6, (_) => Container(color: Theme.of(c).colorScheme.surfaceContainerHighest, child: const Icon(Icons.photo, color: Colors.grey))));
 }
