@@ -1,0 +1,125 @@
+name: media_hub_pro_max
+description: "Media Hub Pro MAX — 6 apps en 1. Audio Hi-Res, Vidéo 8K, Galerie IA, Coffre-fort, Downloader, Outils."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ─── ÉTAT & ARCHITECTURE ───
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+  flutter_bloc: ^8.1.6
+  equatable: ^2.0.5
+
+  # ─── NAVIGATION ───
+  go_router: ^14.2.1
+
+  # ─── BASE DE DONNÉES ───
+  drift: ^2.19.1
+  sqlite3_flutter_libs: ^0.5.24
+  path_provider: ^2.1.4
+  path: ^1.9.0
+
+  # ─── AUDIO ───
+  just_audio: ^0.9.39
+  audio_service: ^0.18.15
+  flutter_soloud: ^2.1.4          # Hi-Res FLAC/WAV/DSF natif
+  audio_session: ^0.1.21
+
+  # ─── VIDÉO ───
+  media_kit: ^1.1.11              # Lecteur 8K HDR10+ natif
+  media_kit_video: ^1.2.5
+  media_kit_libs_video: ^1.0.5
+  subtitle_wrapper_package: ^2.2.1
+
+  # ─── GALERIE & IMAGE ───
+  photo_manager: ^3.5.1           # Accès galerie système
+  image: ^4.2.0                   # Manipulation image bas niveau
+  cached_network_image: ^3.3.1
+  photo_view: ^0.15.0
+  flutter_image_compress: ^2.3.0
+
+  # ─── IA / ML ───
+  tflite_flutter: ^0.11.0        # TensorFlow Lite local
+  google_mlkit_face_detection: ^0.11.0
+  google_mlkit_text_recognition: ^0.13.0
+  google_mlkit_image_labeling: ^0.12.0
+
+  # ─── CHIFFREMENT & SÉCURITÉ ───
+  sodium_libs: ^2.2.0            # libsodium — AES-256-GCM
+  flutter_secure_storage: ^9.2.2
+  local_auth: ^2.2.0             # Empreinte + visage
+  cryptography: ^2.7.0
+
+  # ─── FFMPEG & MEDIA PROCESSING ───
+  ffmpeg_kit_flutter: ^6.0.3
+  ffmpeg_kit_flutter_https: ^6.0.3
+
+  # ─── RÉSEAU & DOWNLOAD ───
+  dio: ^5.5.3+1
+  flutter_downloader: ^1.11.8
+  youtube_explode_dart: ^2.3.5   # YouTube download
+  libtorrent: ^0.3.0             # Client torrent léger
+
+  # ─── UI & DESIGN ───
+  dynamic_color: ^1.7.0          # Thème Monet dynamique
+  rive: ^0.13.9                  # Animations Rive
+  shimmer: ^3.0.0
+  flutter_staggered_grid_view: ^0.7.0
+  smooth_page_indicator: ^1.2.0+3
+  sliver_tools: ^0.2.12
+  percent_indicator: ^4.2.3
+
+  # ─── DOCUMENTS ───
+  pdf: ^3.11.1
+  printing: ^5.12.0
+  syncfusion_flutter_pdfviewer: ^27.1.52
+
+  # ─── UTILITAIRES ───
+  permission_handler: ^11.3.1
+  share_plus: ^9.0.0
+  url_launcher: ^6.3.0
+  uuid: ^4.4.2
+  intl: ^0.19.0
+  logger: ^2.4.0
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  connectivity_plus: ^6.0.3
+  device_info_plus: ^10.1.2
+  wakelock_plus: ^1.2.8
+  vibration: ^2.0.0
+  flutter_local_notifications: ^17.2.3
+
+  # ─── CAST ───
+  cast: ^3.0.0                   # Chromecast
+  network_info_plus: ^6.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.12
+  drift_dev: ^2.19.1
+  riverpod_generator: ^2.4.2
+  mocktail: ^1.0.4
+  bloc_test: ^9.1.7
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/models/tflite/
+    - assets/models/onnx/
+    - assets/images/
+    - assets/rive/
+    - assets/lang/
+
+  fonts:
+    - family: MediaHubIcons
+      fonts:
+        - asset: assets/fonts/MediaHubIcons.ttf
