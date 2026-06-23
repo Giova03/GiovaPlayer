@@ -3,6 +3,8 @@ name: Build GiovaPlayer APK
 on:
   push:
     branches: [main]
+    paths:
+      - 'media_hub_pro_max/**'
   workflow_dispatch:
 
 jobs:
@@ -27,22 +29,25 @@ jobs:
           flutter-version: '3.29.3'
 
       - name: Install dependencies
+        working-directory: media_hub_pro_max
         run: flutter pub get
 
       - name: Build Debug APK
+        working-directory: media_hub_pro_max
         run: flutter build apk --debug
 
       - name: Build Release APK
+        working-directory: media_hub_pro_max
         run: flutter build apk --release
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: giova-player-debug
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          path: media_hub_pro_max/build/app/outputs/flutter-apk/app-debug.apk
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
           name: giova-player-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: media_hub_pro_max/build/app/outputs/flutter-apk/app-release.apk
