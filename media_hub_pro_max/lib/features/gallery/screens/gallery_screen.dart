@@ -43,7 +43,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
         data: (images) {
           if (images.isEmpty) {
             return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.photo_library, size: 64, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+              Icon(Icons.photo_library, size: 64, color: cs.onSurfaceVariant.withOpacity(0.5)),
               const SizedBox(height: 16),
               const Text('Aucune image trouvée'),
               const SizedBox(height: 8),
@@ -56,7 +56,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
           return CustomScrollView(slivers: [
             // Barre d'actions IA
             SliverToBoxAdapter(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              color: cs.primaryContainer.withValues(alpha: 0.3),
+              color: cs.primaryContainer.withOpacity(0.3),
               child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
                 ActionChip(avatar: const Icon(Icons.auto_fix_high, size: 16), label: const Text('IA Photo Fix'), onPressed: () {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const IaPhotoFixScreen()));

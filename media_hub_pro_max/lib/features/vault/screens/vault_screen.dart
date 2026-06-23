@@ -117,7 +117,7 @@ class _VaultScreenState extends State<VaultScreen> {
         Icon(Icons.shield, color: cs.onTertiaryContainer), const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('AES-256-GCM', style: TextStyle(color: cs.onTertiaryContainer, fontWeight: FontWeight.w600)),
-          Text('Anti-screenshot • Flou auto • Photo intrus', style: TextStyle(color: cs.onTertiaryContainer.withValues(alpha: 0.7), fontSize: 12)),
+          Text('Anti-screenshot • Flou auto • Photo intrus', style: TextStyle(color: cs.onTertiaryContainer.withOpacity(0.7), fontSize: 12)),
         ])),
       ]))),
       const SizedBox(height: 16),

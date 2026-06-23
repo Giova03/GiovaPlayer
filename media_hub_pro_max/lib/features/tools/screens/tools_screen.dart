@@ -156,7 +156,7 @@ class _ToolsScreenState extends ConsumerState<ToolsScreen> with TickerProviderSt
       ].map((c) => Card(margin: const EdgeInsets.only(bottom: 8),
         child: ListTile(
           leading: Container(width: 36, height: 36,
-            decoration: BoxDecoration(color: c.$4.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(color: c.$4.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
             child: Icon(c.$1, color: c.$4, size: 20)),
           title: Text(c.$2),
           subtitle: Text(c.$3, style: const TextStyle(fontSize: 12)),

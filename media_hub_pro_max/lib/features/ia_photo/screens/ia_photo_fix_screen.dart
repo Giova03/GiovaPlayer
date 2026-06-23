@@ -32,14 +32,14 @@ class _S extends ConsumerState<IaPhotoFixScreen> {
           Text('AVANT', style: TextStyle(color: cs.onSurfaceVariant)),
         ]))),
         if (_result != null) ClipRect(child: Align(alignment: Alignment.centerRight, widthFactor: 1 - _cmpPos,
-          child: Container(color: cs.primaryContainer.withValues(alpha:0.3), child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          child: Container(color: cs.primaryContainer.withOpacity(0.3), child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(Icons.auto_fix_high, size: 64), const SizedBox(height: 8),
             Text('APRES', style: TextStyle(color: cs.primary)),
           ]))))),
         if (_result != null) Positioned(left: _cmpPos * MediaQuery.of(context).size.width, top: 0, bottom: 0,
           child: GestureDetector(onHorizontalDragUpdate: (d) => setState(() => _cmpPos = (d.globalPosition.dx / MediaQuery.of(context).size.width).clamp(0.05, 0.95)),
             child: Container(width: 3, color: Colors.white, child: Center(child: Container(width: 28, height: 28,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha:0.3), blurRadius: 8)]),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8)]),
               child: const Icon(Icons.compare_arrows, size: 16)))))),
         if (_state == FixState.processing) Container(color: Colors.black54, child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           const CircularProgressIndicator(color: Colors.white),

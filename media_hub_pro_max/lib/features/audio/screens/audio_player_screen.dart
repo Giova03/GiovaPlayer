@@ -99,7 +99,7 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
       ),
       if (files.isEmpty)
         Expanded(child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.music_note, size: 64, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+          Icon(Icons.music_note, size: 64, color: cs.onSurfaceVariant.withOpacity(0.5)),
           const SizedBox(height: 16),
           const Text('Aucun fichier audio trouvé'),
           const SizedBox(height: 8),
@@ -132,7 +132,7 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
   Widget _buildPlayer(List<MediaFile> files, ColorScheme cs, AudioPlayer player, int currentIndex, double speed) {
     if (files.isEmpty) {
       return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(Icons.music_note, size: 64, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+        Icon(Icons.music_note, size: 64, color: cs.onSurfaceVariant.withOpacity(0.5)),
         const SizedBox(height: 16),
         const Text('Sélectionnez un morceau'),
       ]));
@@ -144,7 +144,7 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
       // Pochette
       Container(width: 220, height: 220,
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), color: cs.surfaceContainerHighest,
-          boxShadow: [BoxShadow(color: cs.primary.withValues(alpha: 0.2), blurRadius: 20, offset: const Offset(0, 8))]),
+          boxShadow: [BoxShadow(color: cs.primary.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8))]),
         child: Icon(Icons.album, size: 72, color: cs.primary)),
       const SizedBox(height: 20),
       Text(track.displayName, style: Theme.of(context).textTheme.headlineSmall,
@@ -253,14 +253,14 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
           })),
         const Icon(Icons.volume_up, size: 18),
       ]),
-    ]);
+    ]));
   }
 
   // ─── FAVORIS ───
   Widget _buildFavorites(List<MediaFile> files, ColorScheme cs, AudioPlayer player) {
     // Pour l'instant, placeholder
     return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Icon(Icons.favorite_border, size: 64, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+      Icon(Icons.favorite_border, size: 64, color: cs.onSurfaceVariant.withOpacity(0.5)),
       const SizedBox(height: 16),
       const Text('Aucun favori'),
       const SizedBox(height: 8),

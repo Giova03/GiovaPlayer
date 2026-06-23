@@ -120,7 +120,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
           // Liste des vidéos
           Expanded(child: files.isEmpty
             ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.movie, size: 64, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+                Icon(Icons.movie, size: 64, color: cs.onSurfaceVariant.withOpacity(0.5)),
                 const SizedBox(height: 16),
                 const Text('Aucune vidéo trouvée'),
                 const SizedBox(height: 8),
@@ -137,7 +137,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
                 final isSelected = i == _selectedIndex;
                 return ListTile(
                   selected: isSelected,
-                  selectedTileColor: cs.primaryContainer.withValues(alpha: 0.3),
+                  selectedTileColor: cs.primaryContainer.withOpacity(0.3),
                   leading: Container(width: 56, height: 36,
                     decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(6)),
                     child: const Icon(Icons.movie, size: 18)),
