@@ -3,8 +3,6 @@ name: Build GiovaPlayer APK
 on:
   push:
     branches: [main]
-    paths:
-      - 'media_hub_pro_max/**'
   workflow_dispatch:
 
 jobs:
@@ -26,7 +24,10 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.29.3'
+
+      - name: Flutter version
+        working-directory: media_hub_pro_max
+        run: flutter --version
 
       - name: Install dependencies
         working-directory: media_hub_pro_max
