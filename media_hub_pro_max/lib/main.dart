@@ -1,37 +1,55 @@
-// GiovaPlayer v2.0 — Application multimedia 6-en-1
-// Developpeur: Giova | Contact: giobamos03@gmail.com | WhatsApp: +22670698070
-// Securite: aucune donnee utilisateur n'est collectee, partagee ou envoyee a un serveur.
-// Toutes les donnees restent en local sur l'appareil de l'utilisateur.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'core/router/app_router.dart';
 import 'core/providers/app_providers.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
-  runApp(const ProviderScope(child: GiovaPlayerApp()));
+  runZonedGuarded(() {
+    runApp(const ProviderScope(child: GiovaPlayerApp()));
+  }, (error, stack) {
+    debugPrint('Erreur non capturée: $error');
+  });
 }
 
 class GiovaPlayerApp extends ConsumerWidget {
   const GiovaPlayerApp({super.key});
 
+  static const _seeds = [
+    0xFF6750A4, 0xFFE91E63, 0xFF2196F3, 0xFF4CAF50,
+    0xFFFF9800, 0xFF9C27B0, 0xFF00BCD4, 0xFFF44336,
+    0xFF3F51B5, 0xFF795548,
+  ];
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = ref.watch(isDarkModeProvider);
     final router = ref.watch(appRouterProvider);
-    final seed = ref.watch(themeSeedProvider);
+    final seedIdx = ref.watch(themeSeedProvider);
+    final seed = Color(_seeds[seedIdx % _seeds.length]);
 
-    return MaterialApp.router(
-      title: 'GiovaPlayer',
-      debugShowCheckedModeBanner: false,
-      routerConfig: router,
-      locale: const Locale('fr', 'FR'),
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Color(seed), brightness: Brightness.light),
-      darkTheme: ThemeData(useMaterial3: true, colorSchemeSeed: Color(seed), brightness: Brightness.dark),
-      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
-    );
+    return DynamicColorBuilder(builder: (lightDynamic, darkDynamic) {
+      return MaterialApp.router(
+        title: 'GiovaPlayer',
+        debugShowCheckedModeBanner: false,
+        routerConfig: router,
+        locale: const Locale('fr', 'FR'),
+        theme: ThemeData(
+          useMaterial3: true,
+          colorSchemeSeed: seed,
+          brightness: Brightness.light,
+        ),
+        darkTheme: ThemeData(
+          useMaterial3: true,
+          colorSchemeSeed: seed,
+          brightness: Brightness.dark,
+        ),
+        themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
+      );
+    });
   }
 }

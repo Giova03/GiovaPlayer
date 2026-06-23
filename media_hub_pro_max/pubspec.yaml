@@ -1,7 +1,7 @@
 name: giova_player
-description: "GiovaPlayer — Lecteur multimédia tout-en-un par Giova. Audio Hi-Res, Vidéo 8K, Galerie IA, Coffre-fort, Downloader, Outils. Contact: giobamos03@gmail.com | WhatsApp: +22670698070"
+description: "GiovaPlayer — Lecteur multimédia tout-en-un. Audio Hi-Res, Vidéo 8K, Galerie IA, Coffre-fort, Downloader, Outils. Contact: giobamos03@gmail.com | WhatsApp: +22670698070"
 publish_to: 'none'
-version: 2.0.0+2
+version: 3.0.0+3
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -15,6 +15,14 @@ dependencies:
   uuid: ^4.4.2
   intl: ^0.19.0
   logger: ^2.4.0
+  just_audio: ^0.9.39
+  video_player: ^2.9.2
+  permission_handler: ^11.3.1
+  path_provider: ^2.1.5
+  sqflite: ^2.3.3+2
+  flutter_secure_storage: ^9.2.2
+  percent_indicator: ^4.2.3
+  wakelock_plus: ^1.2.8
 
 dev_dependencies:
   flutter_test:

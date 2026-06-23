@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../features/audio/screens/audio_player_screen.dart';
 import '../../features/video/screens/video_player_screen.dart';
 import '../../features/gallery/screens/gallery_screen.dart';
-import '../../features/ia_photo/screens/ia_photo_fix_screen.dart';
 import '../../features/vault/screens/vault_screen.dart';
 import '../../features/downloader/screens/downloader_screen.dart';
 import '../../features/tools/screens/tools_screen.dart';
@@ -22,7 +21,6 @@ final appRouterProvider = Provider<GoRouter>((ref) => GoRouter(
       GoRoute(path: '/downloader', builder: (_, __) => const DownloaderScreen()),
       GoRoute(path: '/tools', builder: (_, __) => const ToolsScreen()),
     ]),
-    GoRoute(path: '/ia-photo', builder: (_, __) => const IaPhotoFixScreen()),
   ],
 ));
 
@@ -38,11 +36,14 @@ class _Shell extends ConsumerWidget {
     };
     return Scaffold(body: child, bottomNavigationBar: NavigationBar(
       selectedIndex: idx,
-      onDestinationSelected: (i) => context.go(switch(i){0=>'/',1=>'/audio',2=>'/video',3=>'/gallery',4=>'/vault',5=>'/downloader',6=>'/tools',_=>'/'}),
+      onDestinationSelected: (i) => context.go(switch(i){
+        0 => '/', 1 => '/audio', 2 => '/video', 3 => '/gallery',
+        4 => '/vault', 5 => '/downloader', 6 => '/tools', _ => '/',
+      }),
       destinations: const [
         NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Accueil'),
         NavigationDestination(icon: Icon(Icons.headphones_outlined), selectedIcon: Icon(Icons.headphones), label: 'Audio'),
-        NavigationDestination(icon: Icon(Icons.play_circle_outline), selectedIcon: Icon(Icons.play_circle), label: 'Video'),
+        NavigationDestination(icon: Icon(Icons.play_circle_outline), selectedIcon: Icon(Icons.play_circle), label: 'Vidéo'),
         NavigationDestination(icon: Icon(Icons.photo_library_outlined), selectedIcon: Icon(Icons.photo_library), label: 'Galerie'),
         NavigationDestination(icon: Icon(Icons.lock_outline), selectedIcon: Icon(Icons.lock), label: 'Coffre'),
         NavigationDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: 'Download'),
@@ -58,44 +59,54 @@ class _Home extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(appBar: AppBar(title: const Text('GiovaPlayer'), actions: [
+      PopupMenuButton(itemBuilder: (_) => [
+        const PopupMenuItem(value: 'theme', child: Text('Changer thème')),
+        const PopupMenuItem(value: 'about', child: Text('À propos')),
+      ], onSelected: (v) {
+        if (v == 'theme') {
+          final idx = ref.read(themeSeedProvider);
+          ref.read(themeSeedProvider.notifier).state = idx + 1;
+        }
+      }),
       IconButton(icon: Icon(ref.watch(isDarkModeProvider) ? Icons.light_mode : Icons.dark_mode),
         onPressed: () => ref.read(isDarkModeProvider.notifier).state = !ref.read(isDarkModeProvider)),
     ]), body: ListView(padding: const EdgeInsets.all(16), children: [
+      // Bannière
       Card(color: cs.primaryContainer, child: Padding(padding: const EdgeInsets.all(20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [Icon(Icons.auto_awesome, color: cs.onPrimaryContainer), const SizedBox(width: 12),
-            Expanded(child: Text('GiovaPlayer v2.0', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: cs.onPrimaryContainer)))]),
+            Expanded(child: Text('GiovaPlayer v3.0', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: cs.onPrimaryContainer)))]),
           const SizedBox(height: 8),
-          Text('6 apps en 1 • 100% offline • Vos donnees restent sur votre appareil',
-            style: TextStyle(color: cs.onPrimaryContainer.withValues(alpha:0.8), fontSize: 13)),
+          Text('6 apps en 1 • 100% offline • Vos données restent sur votre appareil',
+            style: TextStyle(color: cs.onPrimaryContainer.withValues(alpha: 0.8), fontSize: 13)),
           const SizedBox(height: 4),
           Text('Contact: giobamos03@gmail.com | WhatsApp: +22670698070',
-            style: TextStyle(color: cs.onPrimaryContainer.withValues(alpha:0.6), fontSize: 11)),
+            style: TextStyle(color: cs.onPrimaryContainer.withValues(alpha: 0.6), fontSize: 11)),
         ]))),
       const SizedBox(height: 24),
       Text('Modules', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 12),
-      GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: NeverScrollableScrollPhysics(),
+      GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.5,
         children: [
-          _Mod('Audio', Icons.headphones, '/audio', 'Hi-Res FLAC/DSF', cs),
-          _Mod('Video', Icons.play_circle, '/video', '8K HDR10+ Dolby', cs),
-          _Mod('Galerie', Icons.photo_library, '/gallery', 'Tri IA + Edition', cs),
+          _Mod('Audio', Icons.headphones, '/audio', 'Lecteur Hi-Res', cs),
+          _Mod('Vidéo', Icons.play_circle, '/video', 'Lecteur 8K HDR', cs),
+          _Mod('Galerie', Icons.photo_library, '/gallery', 'Photos & IA', cs),
           _Mod('Coffre', Icons.lock, '/vault', 'AES-256 + PIN', cs),
-          _Mod('Download', Icons.download, '/downloader', 'YT/TikTok/Torrent', cs),
-          _Mod('Outils', Icons.build, '/tools', 'Convertisseur+Clean', cs),
+          _Mod('Download', Icons.download, '/downloader', 'Gestionnaire', cs),
+          _Mod('Outils', Icons.build, '/tools', 'Convertisseur+', cs),
         ]),
       const SizedBox(height: 24),
       Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Icon(Icons.security, color: cs.tertiary), const SizedBox(width: 12),
-          Expanded(child: Text('Protection des donnees', style: Theme.of(context).textTheme.titleSmall))]),
+          Expanded(child: Text('Protection des données', style: Theme.of(context).textTheme.titleSmall))]),
         const SizedBox(height: 8),
-        const Text('- Aucune donnee collectee ou envoyee a un serveur', style: TextStyle(fontSize: 12)),
-        const Text('- Toutes les donnees restent sur votre appareil', style: TextStyle(fontSize: 12)),
+        const Text('- Aucune donnée collectée ou envoyée à un serveur', style: TextStyle(fontSize: 12)),
+        const Text('- Toutes les données restent sur votre appareil', style: TextStyle(fontSize: 12)),
         const Text('- Chiffrement AES-256 pour le coffre-fort', style: TextStyle(fontSize: 12)),
         const Text('- Aucun analytics, aucun tracking', style: TextStyle(fontSize: 12)),
-        const Text('- Permissions demandees uniquement si necessaire', style: TextStyle(fontSize: 12)),
-        const Text('- Droit de suppression totale des donnees', style: TextStyle(fontSize: 12)),
+        const Text('- Permissions demandées uniquement si nécessaire', style: TextStyle(fontSize: 12)),
+        const Text('- Droit de suppression totale des données', style: TextStyle(fontSize: 12)),
       ]))),
     ]));
   }
