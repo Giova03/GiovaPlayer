@@ -29,7 +29,7 @@ class GiovaAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
     session.interruptionEventStream.listen((event) {
-      if (!event.playing) _player.pause();
+      _player.pause();
     });
     session.becomingNoisyEventStream.listen((_) => _player.pause());
   }
