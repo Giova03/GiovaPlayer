@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:ffmpeg_kit_flutter_audio/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_audio/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_audio/return_code.dart';
+import 'package:ffmpeg_kit_flutter_audio/media_information_session.dart';
 
 /// Media processing utilities using FFmpeg Kit Audio.
 /// Supports audio cutting, conversion, metadata editing, and video→audio extraction.
@@ -21,10 +22,10 @@ class MediaProcessor {
     }
   }
 
-  /// Get media information for a file using ffprobe
+  /// Get media information for a file
   static Future<Map<String, dynamic>?> getMediaInfo(String filePath) async {
     try {
-      final session = await FFmpegKit.getMediaInformation(filePath);
+      final session = await FFmpegKitConfig.getMediaInformation(filePath);
       final info = session.getMediaInformation();
       if (info == null) return null;
       final properties = info.getAllProperties();
@@ -40,7 +41,6 @@ class MediaProcessor {
     try {
       final info = await getMediaInfo(filePath);
       if (info == null) return 0;
-      // Try format.duration first, then duration
       final format = info['format'] as Map?;
       final durStr = format?['duration'] as String? ?? info['duration'] as String? ?? '0';
       return double.tryParse(durStr) ?? 0;
