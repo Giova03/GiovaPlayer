@@ -55,9 +55,9 @@ class _Home extends ConsumerWidget {
     ]), body: ListView(padding: const EdgeInsets.all(16), children: [
       Card(color: cs.primaryContainer, child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Icon(Icons.auto_awesome, color: cs.onPrimaryContainer), const SizedBox(width: 12),
-          Expanded(child: Text('GiovaPlayer v5.0', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: cs.onPrimaryContainer)))]),
+          Expanded(child: Text('GiovaPlayer v6.0', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: cs.onPrimaryContainer)))]),
         const SizedBox(height: 8),
-        Text('6 apps en 1 • Audio arrière-plan • Vidéo plein écran • 100% offline', style: TextStyle(color: cs.onPrimaryContainer.withOpacity(0.8), fontSize: 13)),
+        Text('6 apps en 1 • Convertisseur FFmpeg • Coffre AES-256 • Downloader • 100% offline', style: TextStyle(color: cs.onPrimaryContainer.withOpacity(0.8), fontSize: 13)),
         const SizedBox(height: 4),
         Text('Contact: giobamos03@gmail.com | WhatsApp: +22670698070', style: TextStyle(color: cs.onPrimaryContainer.withOpacity(0.6), fontSize: 11)),
       ]))),

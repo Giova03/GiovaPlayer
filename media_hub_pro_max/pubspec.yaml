@@ -1,7 +1,7 @@
 name: giova_player
 description: "GiovaPlayer — Lecteur multimédia tout-en-un. Contact: giobamos03@gmail.com | WhatsApp: +22670698070"
 publish_to: 'none'
-version: 5.0.0+5
+version: 6.0.0+6
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -28,6 +28,10 @@ dependencies:
   local_auth: ^2.3.0
   crypto: ^3.0.3
   path: ^1.9.0
+  # NEW v6.0 dependencies
+  ffmpeg_kit_flutter_audio: ^6.0.3
+  encrypt: ^5.0.3
+  dio: ^5.4.0
 
 dev_dependencies:
   flutter_test:
