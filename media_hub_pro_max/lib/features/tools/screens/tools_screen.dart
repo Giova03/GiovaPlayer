@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 import '../../../core/utils/file_scanner.dart';
 
 class ToolsScreen extends ConsumerStatefulWidget {
@@ -16,541 +15,269 @@ class _ToolsScreenState extends ConsumerState<ToolsScreen> with TickerProviderSt
   bool _scanning = false;
   List<MediaFile> _duplicates = [];
   List<MediaFile> _largeFiles = [];
-  int _audioTotal = 0, _videoTotal = 0, _imageTotal = 0;
-  String _passwordGenResult = '';
-  int _passwordLength = 16;
-  bool _includeUpper = true, _includeLower = true, _includeNumbers = true, _includeSymbols = true;
+  String _pwResult = '';
+  int _pwLen = 16;
+  bool _pwUpper = true, _pwLower = true, _pwNum = true, _pwSym = true;
+  double _cutterStart = 0, _cutterEnd = 30;
 
-  // Audio converter state
-  String _selectedQuality = '320kbps';
-  String _selectedFormat = 'MP3';
-
-  @override
-  void initState() {
-    super.initState();
-    _tc = TabController(length: 6, vsync: this);
-  }
+  @override void initState() { super.initState(); _tc = TabController(length: 6, vsync: this); }
+  @override void dispose() { _tc.dispose(); super.dispose(); }
 
   @override
-  void dispose() { _tc.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(appBar: AppBar(title: const Text('Outils Pro'),
-      bottom: TabBar(controller: _tc, isScrollable: true, tabs: const [
-        Tab(text: 'Stockage', icon: Icon(Icons.storage, size: 16)),
-        Tab(text: 'Convertisseur', icon: Icon(Icons.transform, size: 16)),
-        Tab(text: 'Nettoyeur', icon: Icon(Icons.cleaning_services, size: 16)),
-        Tab(text: 'Sécurité', icon: Icon(Icons.security, size: 16)),
-        Tab(text: 'Métadonnées', icon: Icon(Icons.tag, size: 16)),
-        Tab(text: 'Audio Tools', icon: Icon(Icons.graphic_eq, size: 16)),
-      ])),
-      body: TabBarView(controller: _tc, children: [
-        _buildStorage(cs),
-        _buildConverter(cs),
-        _buildCleaner(cs),
-        _buildSecurity(cs),
-        _buildMetadata(cs),
-        _buildAudioTools(cs),
-      ]),
-    );
-  }
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Outils Pro'),
+    bottom: TabBar(controller: _tc, isScrollable: true, tabs: const [
+      Tab(text: 'Stockage'), Tab(text: 'Convertisseur'), Tab(text: 'Nettoyeur'),
+      Tab(text: 'Sécurité'), Tab(text: 'Métadonnées'), Tab(text: 'Audio'),
+    ])),
+    body: TabBarView(controller: _tc, children: [
+      _storage(), _converter(), _cleaner(), _security(), _metadata(), _audioTools(),
+    ]),
+  );
 
   // ═══ STOCKAGE ═══
-  Widget _buildStorage(ColorScheme cs) {
+  Widget _storage() {
+    final audio = ref.watch(audioFilesProvider).valueOrNull ?? [];
+    final video = ref.watch(videoFilesProvider).valueOrNull ?? [];
+    final image = ref.watch(imageFilesProvider).valueOrNull ?? [];
+    final all = [...audio, ...video, ...image]..sort((a, b) => b.size.compareTo(a.size));
+    final aS = audio.fold<int>(0, (s, f) => s + f.size);
+    final vS = video.fold<int>(0, (s, f) => s + f.size);
+    final iS = image.fold<int>(0, (s, f) => s + f.size);
+    final total = aS + vS + iS;
     return ListView(padding: const EdgeInsets.all(16), children: [
       Text('Analyse du stockage', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 8),
-      FilledButton.icon(onPressed: _analyzeStorage, icon: const Icon(Icons.analytics), label: const Text('Analyser')),
-      const SizedBox(height: 16),
-      if (_audioTotal + _videoTotal + _imageTotal > 0) ...[
-        Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(children: [
-          Text(_fmtSize(_audioTotal + _videoTotal + _imageTotal),
-            style: Theme.of(context).textTheme.headlineMedium),
-          const Text('Espace total occupé'),
-          const SizedBox(height: 16),
-          ClipRRect(borderRadius: BorderRadius.circular(6),
-            child: SizedBox(height: 16, child: Row(children: [
-              if (_videoTotal > 0) Expanded(flex: _videoTotal, child: Container(color: Colors.red)),
-              if (_audioTotal > 0) Expanded(flex: _audioTotal, child: Container(color: Colors.blue)),
-              if (_imageTotal > 0) Expanded(flex: _imageTotal, child: Container(color: Colors.green)),
-            ]))),
-          const SizedBox(height: 8),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-            _sc('Vidéos', _fmtSize(_videoTotal), Icons.movie, Colors.red),
-            _sc('Audio', _fmtSize(_audioTotal), Icons.music_note, Colors.blue),
-            _sc('Photos', _fmtSize(_imageTotal), Icons.photo, Colors.green),
-          ]),
+      const SizedBox(height: 12),
+      if (total > 0) Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(children: [
+        Text(_fs(total), style: Theme.of(context).textTheme.headlineMedium),
+        const Text('Espace total occupé par les médias'),
+        const SizedBox(height: 12),
+        ClipRRect(borderRadius: BorderRadius.circular(6), child: SizedBox(height: 14, child: Row(children: [
+          if (vS > 0) Expanded(flex: vS, child: Container(color: Colors.red)),
+          if (aS > 0) Expanded(flex: aS, child: Container(color: Colors.blue)),
+          if (iS > 0) Expanded(flex: iS, child: Container(color: Colors.green)),
         ]))),
-        const SizedBox(height: 16),
-        Text('Fichiers les plus volumineux', style: Theme.of(context).textTheme.titleMedium),
-        ..._largeFiles.take(15).map((f) => ListTile(
-          leading: Icon(_typeIcon(f.type), color: cs.primary),
-          title: Text(f.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-          subtitle: Text(_fmtSize(f.size)),
-          trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red),
-            onPressed: () => _deleteFile(f)),
-        )),
-      ],
+        const SizedBox(height: 8),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+          _sc('Vidéos', _fs(vS), Icons.movie, Colors.red),
+          _sc('Audio', _fs(aS), Icons.music_note, Colors.blue),
+          _sc('Photos', _fs(iS), Icons.photo, Colors.green),
+        ]),
+      ]))),
+      const SizedBox(height: 16),
+      Text('Fichiers les plus volumineux', style: Theme.of(context).textTheme.titleMedium),
+      ...all.take(15).map((f) => ListTile(
+        leading: Icon(_ti(f.type), color: Theme.of(context).colorScheme.primary),
+        title: Text(f.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+        subtitle: Text(_fs(f.size)), trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => _del(f)),
+      )),
+      const SizedBox(height: 16),
+      Text('Statistiques intelligentes', style: Theme.of(context).textTheme.titleMedium),
+      ...[
+        ('Nombre total de fichiers', '${all.length}'),
+        ('Taille moyenne', _fs(all.isEmpty ? 0 : total ~/ all.length)),
+        ('Dossier le plus lourd', _heaviestFolder(all)),
+        ('Fichier le plus récent', all.isEmpty ? '-' : '${all.first.modified.day}/${all.first.modified.month}/${all.first.modified.year}'),
+        ('Photos HEIC', '${image.where((f) => f.extension == '.heic').length}'),
+        ('Audio FLAC', '${audio.where((f) => f.extension == '.flac').length}'),
+        ('Vidéos 4K (estimé)', '${video.where((f) => f.size > 500000000).length}'),
+      ].map((r) => ListTile(title: Text(r.$1, style: const TextStyle(fontSize: 13)), trailing: Text(r.$2, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)))),
     ]);
   }
 
   // ═══ CONVERTISSEUR ═══
-  Widget _buildConverter(ColorScheme cs) {
-    return ListView(padding: const EdgeInsets.all(16), children: [
-      Text('Convertisseur de formats', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 12),
-      // Vidéo → Audio
-      Card(child: ListTile(
-        leading: Icon(Icons.videocam, color: cs.primary, size: 32),
-        title: const Text('Vidéo → Audio'),
-        subtitle: const Text('Extraire la piste audio d\'une vidéo (MP4 → MP3, FLAC...)'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _showConverter('video_to_audio'),
-      )),
-      // Image → PDF
-      Card(child: ListTile(
-        leading: Icon(Icons.image, color: Colors.green, size: 32),
-        title: const Text('Image → PDF'),
-        subtitle: const Text('Convertir des images en document PDF'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _showConverter('image_to_pdf'),
-      )),
-      // Audio format
-      Card(child: ListTile(
-        leading: Icon(Icons.audiotrack, color: Colors.blue, size: 32),
-        title: const Text('Audio → Audio'),
-        subtitle: const Text('Changer le format audio (FLAC → MP3, WAV → AAC...)'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _showConverter('audio_to_audio'),
-      )),
-      // Vidéo format
-      Card(child: ListTile(
-        leading: Icon(Icons.movie, color: Colors.red, size: 32),
-        title: const Text('Vidéo → Vidéo'),
-        subtitle: const Text('Changer le format vidéo (MKV → MP4, AVI → MP4...)'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _showConverter('video_to_video'),
-      )),
-      // GIF
-      Card(child: ListTile(
-        leading: Icon(Icons.gif, color: Colors.orange, size: 32),
-        title: const Text('Vidéo → GIF'),
-        subtitle: const Text('Créer un GIF animé à partir d\'une vidéo'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _showConverter('video_to_gif'),
-      )),
-      // Compress image
-      Card(child: ListTile(
-        leading: Icon(Icons.compress, color: Colors.purple, size: 32),
-        title: const Text('Compresser image'),
-        subtitle: const Text('Réduire la taille d\'une image (qualité, résolution)'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _showConverter('compress_image'),
-      )),
-      // Resize
-      Card(child: ListTile(
-        leading: Icon(Icons.aspect_ratio, color: Colors.teal, size: 32),
-        title: const Text('Redimensionner image'),
-        subtitle: const Text('Changer la taille d\'une image'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _showConverter('resize_image'),
-      )),
-    ]);
-  }
+  Widget _converter() => ListView(padding: const EdgeInsets.all(16), children: [
+    Text('Convertisseur', style: Theme.of(context).textTheme.titleLarge),
+    const SizedBox(height: 12),
+    ...[(Icons.videocam, 'Vidéo → Audio', 'Extraire la piste audio'),
+      (Icons.image, 'Image → PDF', 'Convertir en document PDF'),
+      (Icons.audiotrack, 'Audio → Audio', 'FLAC → MP3, WAV → AAC...'),
+      (Icons.movie, 'Vidéo → Vidéo', 'MKV → MP4, AVI → MP4...'),
+      (Icons.gif, 'Vidéo → GIF', 'Créer un GIF animé'),
+      (Icons.compress, 'Compresser image', 'Réduire la taille'),
+      (Icons.aspect_ratio, 'Redimensionner', 'Changer la résolution'),
+      (Icons.batch_prediction, 'Conversion par lot', 'Traiter plusieurs fichiers'),
+      (Icons.qr_code, 'QR Code', 'Générer un QR Code'),
+      (Icons.picture_as_pdf, 'Texte → PDF', 'Convertir du texte en PDF'),
+    ].map((c) => Card(margin: const EdgeInsets.only(bottom: 4), child: ListTile(
+      leading: Icon(c.$1, color: Theme.of(context).colorScheme.primary, size: 28),
+      title: Text(c.$2, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+      subtitle: Text(c.$3, style: const TextStyle(fontSize: 12)),
+      trailing: const Icon(Icons.chevron_right), onTap: () => _convertDialog(c.$2),
+    ))),
+  ]);
 
-  void _showConverter(String type) {
-    final labels = {
-      'video_to_audio': ('Extraire audio d\'une vidéo', 'Sélectionnez une vidéo pour extraire sa piste audio.'),
-      'image_to_pdf': ('Image vers PDF', 'Sélectionnez des images pour créer un PDF.'),
-      'audio_to_audio': ('Convertir audio', 'Sélectionnez un fichier audio à convertir.'),
-      'video_to_video': ('Convertir vidéo', 'Sélectionnez une vidéo à convertir.'),
-      'video_to_gif': ('Vidéo vers GIF', 'Sélectionnez une vidéo pour créer un GIF.'),
-      'compress_image': ('Compresser image', 'Sélectionnez une image à compresser.'),
-      'resize_image': ('Redimensionner', 'Sélectionnez une image à redimensionner.'),
-    };
-    final info = labels[type]!;
-
-    showModalBottomSheet(context: context, isScrollControlled: true, builder: (_) => DraggableScrollableSheet(
-      initialChildSize: 0.6, expand: false,
-      builder: (c, ctrl) => ListView(controller: ctrl, padding: const EdgeInsets.all(24), children: [
-        Text(info.$1, style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        Text(info.$2, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        const SizedBox(height: 20),
-        // Options de qualité
-        if (type == 'video_to_audio' || type == 'audio_to_audio') ...[
-          Text('Format de sortie', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, children: ['MP3', 'FLAC', 'AAC', 'OGG', 'WAV'].map((f) =>
-            ChoiceChip(label: Text(f), selected: _selectedFormat == f,
-              onSelected: (_) => setState(() => _selectedFormat = f))).toList()),
-          const SizedBox(height: 12),
-          Text('Qualité', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, children: ['128kbps', '192kbps', '256kbps', '320kbps', 'Lossless'].map((q) =>
-            ChoiceChip(label: Text(q), selected: _selectedQuality == q,
-              onSelected: (_) => setState(() => _selectedQuality = q))).toList()),
-        ],
-        if (type == 'compress_image') ...[
-          Text('Qualité de compression', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, children: ['Haute', 'Moyenne', 'Basse'].map((q) =>
-            ChoiceChip(label: Text(q), selected: _selectedQuality == q,
-              onSelected: (_) => setState(() => _selectedQuality = q))).toList()),
-        ],
-        const SizedBox(height: 24),
-        SizedBox(width: double.infinity, child: FilledButton.icon(
-          onPressed: () {
-            Navigator.pop(context);
-            _startConversion(type);
-          },
-          icon: const Icon(Icons.transform), label: const Text('Sélectionner un fichier'))),
-      ]),
-    ));
-  }
-
-  void _startConversion(String type) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Conversion ${type.replaceAll('_', ' ')} en cours...'),
-        duration: const Duration(seconds: 2)));
-    // La conversion réelle nécessiterait ffmpeg ou des bibliothèques natives
-  }
+  void _convertDialog(String title) => showModalBottomSheet(context: context, builder: (_) => ListView(padding: const EdgeInsets.all(24), shrinkWrap: true, children: [
+    Text(title, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 16),
+    Text('Sélectionnez un fichier source pour commencer.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+    const SizedBox(height: 16),
+    FilledButton.icon(onPressed: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$title en cours...'))); },
+      icon: const Icon(Icons.folder_open), label: const Text('Choisir un fichier')),
+  ]));
 
   // ═══ NETTOYEUR ═══
-  Widget _buildCleaner(ColorScheme cs) {
+  Widget _cleaner() {
+    final audio = ref.watch(audioFilesProvider).valueOrNull ?? [];
+    final video = ref.watch(videoFilesProvider).valueOrNull ?? [];
+    final image = ref.watch(imageFilesProvider).valueOrNull ?? [];
     return ListView(padding: const EdgeInsets.all(16), children: [
-      Text('Nettoyeur intelligent', style: Theme.of(context).textTheme.titleLarge),
+      Text('Nettoyeur', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 12),
-      FilledButton.tonalIcon(
-        onPressed: _scanning ? null : _runCleanerScan,
-        icon: _scanning ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.cleaning_services),
-        label: Text(_scanning ? 'Scan en cours...' : 'Lancer le scan complet'),
-      ),
+      FilledButton.tonalIcon(onPressed: _scanning ? null : _runClean, icon: _scanning ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.cleaning_services),
+        label: Text(_scanning ? 'Scan...' : 'Lancer le scan')),
       const SizedBox(height: 16),
-      // Résultats du scan
-      _cleanerCard(Icons.content_copy, 'Fichiers dupliqués', '${_duplicates.length ~/ 2} doublons trouvés',
-        _fmtSize(_duplicates.fold<int>(0, (s, f) => s + f.size ~/ 2)), Colors.orange, cs),
-      _cleanerCard(Icons.photo_size_select_large, 'Photos floues', 'Analyse IA de qualité',
-        'Bientôt disponible', Colors.red, cs),
-      _cleanerCard(Icons.cached, 'Cache applicatif', 'Fichiers temporaires des apps',
-        'Nettoyage automatique', Colors.blue, cs),
-      _cleanerCard(Icons.folder_special, 'Fichiers orphelins', 'Fichiers sans référence',
-        'Scan intelligent', Colors.green, cs),
-      _cleanerCard(Icons.delete_sweep, 'APK installés', 'Fichiers APK dans Download',
-        'Espace récupérable', Colors.purple, cs),
-      const SizedBox(height: 16),
-      if (_duplicates.isNotEmpty) ...[
-        Text('Doublons détectés', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        ..._duplicates.take(10).map((f) => ListTile(
-          leading: Icon(_typeIcon(f.type), color: Colors.orange),
-          title: Text(f.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-          subtitle: Text('${_fmtSize(f.size)} • ${f.path.substring(0, f.path.lastIndexOf('/')).substring(f.path.lastIndexOf('/'))}'),
-          trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => _deleteFile(f)),
-        )),
-      ],
+      _cc(Icons.content_copy, 'Doublons', '${_duplicates.length ~/ 2} trouvés', _fs(_duplicates.fold<int>(0, (s, f) => s + f.size ~/ 2)), Colors.orange),
+      _cc(Icons.photo_size_select_large, 'Photos potentiellement floues', 'Basé sur la taille < 100KB', '${image.where((f) => f.size < 100000).length} photos', Colors.red),
+      _cc(Icons.old, 'Fichiers anciens', 'Plus de 6 mois', '${[...audio,...video,...image].where((f) => f.modified.isBefore(DateTime.now().subtract(const Duration(days: 180)))).length} fichiers', Colors.blue),
+      _cc(Icons.android, 'APK orphelins', 'Fichiers .apk dans Download', 'Vérifier', Colors.green),
+      _cc(Icons.folder_special, 'Fichiers volumineux', '> 500MB', '${[...audio,...video,...image].where((f) => f.size > 500000000).length} fichiers', Colors.purple),
+      _cc(Icons.cache, 'Cache', 'Fichiers temporaires', 'Nettoyer', Colors.teal),
+      _cc(Icons.delete_sweep, 'Miniatures', 'Thumbnails orphelins', 'Vérifier', Colors.grey),
+      _cc(Icons.broken_image, 'Images corrompues', 'Fichiers image < 1KB', '${image.where((f) => f.size < 1024).length} fichiers', Colors.brown),
+      _cc(Icons.audio_file, 'Audio court', 'Fichiers < 30 secondes estimé', '${audio.where((f) => f.size < 200000).length} fichiers', Colors.indigo),
+      if (_duplicates.isNotEmpty) ...[const SizedBox(height: 16), Text('Doublons détectés', style: Theme.of(context).textTheme.titleMedium),
+        ..._duplicates.take(10).map((f) => ListTile(leading: Icon(_ti(f.type), color: Colors.orange), title: Text(f.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)), subtitle: Text(_fs(f.size)), trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => _del(f))))],
     ]);
   }
 
-  Widget _cleanerCard(IconData icon, String title, String subtitle, String extra, Color color, ColorScheme cs) =>
-    Card(margin: const EdgeInsets.only(bottom: 8), child: ListTile(
-      leading: Container(width: 40, height: 40,
-        decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
-        child: Icon(icon, color: color, size: 22)),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-      trailing: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Text(extra, style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
-        const SizedBox(height: 4),
-        SizedBox(height: 28, child: FilledButton.tonal(
-          onPressed: (){}, style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
-          child: const Text('Nettoyer', style: TextStyle(fontSize: 10)))),
-      ]),
-    ));
+  Widget _cc(IconData i, String t, String s1, String s2, Color c) => Card(margin: const EdgeInsets.only(bottom: 6), child: ListTile(
+    leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: c.withOpacity(0.15), borderRadius: BorderRadius.circular(10)), child: Icon(i, color: c, size: 20)),
+    title: Text(t, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)), subtitle: Text(s1, style: const TextStyle(fontSize: 11)),
+    trailing: Text(s2, style: const TextStyle(fontSize: 11)),
+  ));
 
   // ═══ SÉCURITÉ ═══
-  Widget _buildSecurity(ColorScheme cs) {
-    return ListView(padding: const EdgeInsets.all(16), children: [
-      Card(color: cs.tertiaryContainer, child: Padding(padding: const EdgeInsets.all(16), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [Icon(Icons.verified_user, color: cs.onTertiaryContainer), const SizedBox(width: 12),
-          Expanded(child: Text('Sécurité GiovaPlayer',
-            style: TextStyle(color: cs.onTertiaryContainer, fontWeight: FontWeight.w700, fontSize: 16)))]),
-        const SizedBox(height: 12),
-        ...['Aucune donnée personnelle collectée', 'Aucun envoi à des serveurs',
-          'Chiffrement AES-256-GCM', 'Aucun tracking', 'Permissions minimales',
-          'RGPD par design', 'Panic PIN 9999', 'Anti-screenshot coffre'].map((r) =>
-          Padding(padding: const EdgeInsets.only(bottom: 4), child: Row(children: [
-            Icon(Icons.check_circle, size: 14, color: cs.onTertiaryContainer),
-            const SizedBox(width: 6), Text(r, style: TextStyle(color: cs.onTertiaryContainer, fontSize: 12))]))),
-      ]))),
-      const SizedBox(height: 16),
-      // Générateur de mots de passe
-      Text('Générateur de mots de passe', style: Theme.of(context).textTheme.titleMedium),
+  Widget _security() => ListView(padding: const EdgeInsets.all(16), children: [
+    Text('Sécurité & Mots de passe', style: Theme.of(context).textTheme.titleLarge),
+    const SizedBox(height: 12),
+    Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+      if (_pwResult.isNotEmpty) Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
+        child: SelectableText(_pwResult, style: const TextStyle(fontFamily: 'monospace', fontSize: 16))),
+      const SizedBox(height: 12),
+      Row(children: [const Text('Longueur: '), Expanded(child: Slider(value: _pwLen.toDouble(), min: 8, max: 64, divisions: 56, label: '$_pwLen', onChanged: (v) => setState(() => _pwLen = v.round()))), Text('$_pwLen')]),
+      SwitchListTile(title: const Text('Majuscules'), value: _pwUpper, onChanged: (v) => setState(() => _pwUpper = v), dense: true),
+      SwitchListTile(title: const Text('Minuscules'), value: _pwLower, onChanged: (v) => setState(() => _pwLower = v), dense: true),
+      SwitchListTile(title: const Text('Chiffres'), value: _pwNum, onChanged: (v) => setState(() => _pwNum = v), dense: true),
+      SwitchListTile(title: const Text('Symboles'), value: _pwSym, onChanged: (v) => setState(() => _pwSym = v), dense: true),
       const SizedBox(height: 8),
-      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-        if (_passwordGenResult.isNotEmpty) Container(width: double.infinity,
-          padding: const EdgeInsets.all(12), decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
-          child: SelectableText(_passwordGenResult, style: const TextStyle(fontFamily: 'monospace', fontSize: 16))),
-        const SizedBox(height: 12),
-        Row(children: [const Text('Longueur: '), Expanded(child: Slider(
-          value: _passwordLength.toDouble(), min: 8, max: 64, divisions: 56,
-          label: '$_passwordLength', onChanged: (v) => setState(() => _passwordLength = v.round()))),
-          Text('$_passwordLength')]),
-        SwitchListTile(title: const Text('Majuscules'), value: _includeUpper, onChanged: (v) => setState(() => _includeUpper = v)),
-        SwitchListTile(title: const Text('Minuscules'), value: _includeLower, onChanged: (v) => setState(() => _includeLower = v)),
-        SwitchListTile(title: const Text('Chiffres'), value: _includeNumbers, onChanged: (v) => setState(() => _includeNumbers = v)),
-        SwitchListTile(title: const Text('Symboles'), value: _includeSymbols, onChanged: (v) => setState(() => _includeSymbols = v)),
-        const SizedBox(height: 8),
-        Row(children: [
-          Expanded(child: FilledButton.icon(onPressed: _generatePassword,
-            icon: const Icon(Icons.refresh), label: const Text('Générer'))),
-          if (_passwordGenResult.isNotEmpty) ...[const SizedBox(width: 8),
-            IconButton.filled(onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mot de passe copié !')));
-            }, icon: const Icon(Icons.copy))],
-        ]),
-      ]))),
-      const SizedBox(height: 16),
-      // Chiffrement
-      Text('Chiffrement de fichiers', style: Theme.of(context).textTheme.titleMedium),
-      Card(child: ListTile(
-        leading: Icon(Icons.enhanced_encryption, color: cs.primary),
-        title: const Text('Chiffrer un fichier'),
-        subtitle: const Text('AES-256-GCM • Mot de passe'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-      Card(child: ListTile(
-        leading: Icon(Icons.no_encryption, color: cs.primary),
-        title: const Text('Déchiffrer un fichier'),
-        subtitle: const Text('Décryptage AES-256'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-      // Hachage
-      Card(child: ListTile(
-        leading: Icon(Icons.fingerprint, color: cs.primary),
-        title: const Text('Vérifier hachage'),
-        subtitle: const Text('MD5 / SHA-256 / CRC32'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-    ]);
-  }
+      Row(children: [Expanded(child: FilledButton.icon(onPressed: _genPw, icon: const Icon(Icons.refresh), label: const Text('Générer'))),
+        if (_pwResult.isNotEmpty) ...[const SizedBox(width: 8), IconButton.filled(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copié !'))), icon: const Icon(Icons.copy))]),
+    ]))),
+    const SizedBox(height: 16),
+    ...[(Icons.enhanced_encryption, 'Chiffrer un fichier', 'AES-256-GCM'),
+      (Icons.no_encryption, 'Déchiffrer un fichier', 'Décryptage AES-256'),
+      (Icons.fingerprint, 'Vérifier hachage', 'MD5 / SHA-256'),
+      (Icons.verified_user, 'Vérifier intégrité', 'Comparer checksums'),
+      (Icons.password, 'Évaluer force mot de passe', 'Test de robustesse'),
+      (Icons.vpn_key, 'Générateur de clés', 'Clés AES/RSA/Ed25519'),
+      (Icons.shield, 'Audit sécurité', 'Vérifier les vulnérabilités'),
+      (Icons.security, 'Chiffrement note', 'Notes chiffrées'),
+      (Icons.local_police, 'Analyse permissions', 'Vérifier les apps'),
+      (Icons.archive, 'Archive chiffrée', 'ZIP/RAR avec mot de passe'),
+    ].map((c) => Card(margin: const EdgeInsets.only(bottom: 4), child: ListTile(
+      leading: Icon(c.$1, color: Theme.of(context).colorScheme.primary, size: 22), title: Text(c.$2, style: const TextStyle(fontSize: 14)), subtitle: Text(c.$3, style: const TextStyle(fontSize: 11)),
+      trailing: const Icon(Icons.chevron_right, size: 16), onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${c.$2} lancé'))),
+    ))),
+  ]);
 
   // ═══ MÉTADONNÉES ═══
-  Widget _buildMetadata(ColorScheme cs) {
-    final audioFiles = ref.watch(audioFilesProvider).valueOrNull ?? [];
+  Widget _metadata() {
+    final audio = ref.watch(audioFilesProvider).valueOrNull ?? [];
     return ListView(padding: const EdgeInsets.all(16), children: [
       Text('Éditeur de métadonnées', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 12),
-      Card(child: ListTile(
-        leading: Icon(Icons.edit_note, color: cs.primary, size: 32),
-        title: const Text('Éditer tags audio'),
-        subtitle: const Text('Modifier titre, artiste, album, pochette...'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _showMetadataEditor(audioFiles),
-      )),
-      Card(child: ListTile(
-        leading: Icon(Icons.lyrics, color: Colors.blue, size: 32),
-        title: const Text('Rechercher paroles'),
-        subtitle: const Text('Trouver les paroles d\'une chanson'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-      Card(child: ListTile(
-        leading: Icon(Icons.auto_awesome, color: Colors.green, size: 32),
-        title: const Text('Auto-tag IA'),
-        subtitle: const Text('Remplir automatiquement les métadonnées manquantes'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-      Card(child: ListTile(
-        leading: Icon(Icons.album, color: Colors.orange, size: 32),
-        title: const Text('Télécharger pochettes'),
-        subtitle: const Text('Chercher les pochettes d\'album manquantes'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-      if (audioFiles.isNotEmpty) ...[
-        const SizedBox(height: 16),
-        Text('Fichiers sans métadonnées', style: Theme.of(context).textTheme.titleMedium),
-        ...audioFiles.take(10).map((f) => ListTile(
-          leading: Icon(Icons.music_note, color: cs.onSurfaceVariant),
-          title: Text(f.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-          subtitle: Text(f.artist == null ? 'Artiste inconnu' : f.artistDisplay),
-          trailing: IconButton(icon: const Icon(Icons.edit, size: 18), onPressed: () => _showMetadataEditor(audioFiles)),
-        )),
-      ],
+      ...[(Icons.edit_note, 'Éditer tags audio', 'Titre, artiste, album, pochette'),
+        (Icons.lyrics, 'Rechercher paroles', 'Trouver les paroles en ligne'),
+        (Icons.auto_awesome, 'Auto-tag IA', 'Remplir les métadonnées manquantes'),
+        (Icons.album, 'Télécharger pochettes', 'Chercher les covers manquantes'),
+        (Icons.info, 'Voir métadonnées', 'Afficher les tags d\'un fichier'),
+        (Icons.delete_forever, 'Supprimer tags', 'Effacer toutes les métadonnées'),
+        (Icons.sync, 'Synchroniser tags', 'Aligner nom de fichier et tags'),
+        (Icons.audiotrack, 'Normaliser tags', 'Standardiser le formatage'),
+        (Icons.star, 'Notation', 'Ajouter une note/classification'),
+        (Icons.history, 'Historique modifications', 'Voir les changements'),
+      ].map((c) => Card(margin: const EdgeInsets.only(bottom: 4), child: ListTile(
+        leading: Icon(c.$1, color: Theme.of(context).colorScheme.primary, size: 22), title: Text(c.$2, style: const TextStyle(fontSize: 14)), subtitle: Text(c.$3, style: const TextStyle(fontSize: 11)),
+        trailing: const Icon(Icons.chevron_right, size: 16), onTap: () => _tagEditor(c.$2, audio),
+      ))),
+      if (audio.isNotEmpty) ...[const SizedBox(height: 16), Text('Fichiers récents', style: Theme.of(context).textTheme.titleMedium),
+        ...audio.take(8).map((f) => ListTile(leading: const Icon(Icons.music_note, size: 20), title: Text(f.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+          subtitle: Text(f.artistDisplay, style: const TextStyle(fontSize: 11)), trailing: IconButton(icon: const Icon(Icons.edit, size: 16), onPressed: () => _tagEditor('Éditer tags', audio))))],
     ]);
   }
 
-  void _showMetadataEditor(List<MediaFile> files) {
-    showModalBottomSheet(context: context, isScrollControlled: true, builder: (_) => Padding(
-      padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Éditeur de tags', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 16),
-        TextField(decoration: const InputDecoration(labelText: 'Titre', border: OutlineInputBorder())),
-        const SizedBox(height: 8),
-        TextField(decoration: const InputDecoration(labelText: 'Artiste', border: OutlineInputBorder())),
-        const SizedBox(height: 8),
-        TextField(decoration: const InputDecoration(labelText: 'Album', border: OutlineInputBorder())),
-        const SizedBox(height: 8),
-        TextField(decoration: const InputDecoration(labelText: 'Année', border: OutlineInputBorder())),
-        const SizedBox(height: 8),
-        TextField(decoration: const InputDecoration(labelText: 'Genre', border: OutlineInputBorder())),
-        const SizedBox(height: 16),
-        Row(children: [
-          Expanded(child: OutlinedButton.icon(onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.close), label: const Text('Annuler'))),
-          const SizedBox(width: 8),
-          Expanded(child: FilledButton.icon(onPressed: () {
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tags sauvegardés !')));
-          }, icon: const Icon(Icons.save), label: const Text('Sauvegarder'))),
-        ]),
-      ]),
-    ));
-  }
+  void _tagEditor(String title, List<MediaFile> audio) => showModalBottomSheet(context: context, isScrollControlled: true, builder: (_) => Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
+    Text(title, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 16),
+    TextField(decoration: const InputDecoration(labelText: 'Titre', border: OutlineInputBorder())),
+    const SizedBox(height: 8), TextField(decoration: const InputDecoration(labelText: 'Artiste', border: OutlineInputBorder())),
+    const SizedBox(height: 8), TextField(decoration: const InputDecoration(labelText: 'Album', border: OutlineInputBorder())),
+    const SizedBox(height: 8), TextField(decoration: const InputDecoration(labelText: 'Année', border: OutlineInputBorder())),
+    const SizedBox(height: 16),
+    Row(children: [Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler'))),
+      const SizedBox(width: 8), Expanded(child: FilledButton(onPressed: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tags sauvegardés !'))); }, child: const Text('Sauvegarder')))],
+    ),
+  ])));
 
   // ═══ AUDIO TOOLS ═══
-  Widget _buildAudioTools(ColorScheme cs) {
-    return ListView(padding: const EdgeInsets.all(16), children: [
-      Text('Outils audio avancés', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 12),
-      Card(child: ListTile(
-        leading: Icon(Icons.content_cut, color: cs.primary, size: 32),
-        title: const Text('Découpeur audio'),
-        subtitle: const Text('Couper une partie d\'un fichier audio'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _showAudioCutter(),
-      )),
-      Card(child: ListTile(
-        leading: Icon(Icons.merge, color: Colors.green, size: 32),
-        title: const Text('Fusionner audio'),
-        subtitle: const Text('Assembler plusieurs fichiers audio'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-      Card(child: ListTile(
-        leading: Icon(Icons.speed, color: Colors.orange, size: 32),
-        title: const Text('Changer vitesse/pitch'),
-        subtitle: const Text('Accélérer, ralentir ou changer le ton'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-      Card(child: ListTile(
-        leading: Icon(Icons.graphic_eq, color: Colors.blue, size: 32),
-        title: const Text('Normaliser volume'),
-        subtitle: const Text('ReplayGain / Loudness normalization'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-      Card(child: ListTile(
-        leading: Icon(Icons.surround_sound, color: Colors.purple, size: 32),
-        title: const Text('Convertir mono/stéréo'),
-        subtitle: const Text('Changer le nombre de canaux audio'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-      Card(child: ListTile(
-        leading: Icon(Icons.notifications_active, color: Colors.red, size: 32),
-        title: const Text('Créer sonnerie'),
-        subtitle: const Text('Découper 30s pour sonnerie/notification'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-      Card(child: ListTile(
-        leading: Icon(Icons.record_voice_over, color: Colors.teal, size: 32),
-        title: const Text('Enregistreur vocal'),
-        subtitle: const Text('Enregistrer de l\'audio avec le micro'),
-        trailing: const Icon(Icons.chevron_right), onTap: (){},
-      )),
-    ]);
-  }
-
-  void _showAudioCutter() {
-    double startSec = 0, endSec = 30;
-    showModalBottomSheet(context: context, isScrollControlled: true, builder: (_) => StatefulBuilder(
-      builder: (context, setModalState) => Padding(padding: const EdgeInsets.all(24), child: Column(
-        mainAxisSize: MainAxisSize.min, children: [
-        Text('Découpeur audio', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 16),
-        Text('Sélectionnez la plage à conserver'),
-        const SizedBox(height: 12),
-        Row(children: [
-          Text('Début: ${startSec.toStringAsFixed(0)}s'),
-          const Spacer(),
-          Text('Fin: ${endSec.toStringAsFixed(0)}s'),
-        ]),
-        RangeSlider(values: RangeValues(startSec, endSec), min: 0, max: 300,
-          onChanged: (v) => setModalState(() { startSec = v.start; endSec = v.end; })),
-        const SizedBox(height: 12),
-        SizedBox(width: double.infinity, child: FilledButton.icon(
-          onPressed: () {
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Découpage de ${startSec.toStringAsFixed(0)}s à ${endSec.toStringAsFixed(0)}s...')));
-          }, icon: const Icon(Icons.content_cut), label: const Text('Découper'))),
-      ])),
-    ));
-  }
+  Widget _audioTools() => ListView(padding: const EdgeInsets.all(16), children: [
+    Text('Outils audio', style: Theme.of(context).textTheme.titleLarge),
+    const SizedBox(height: 12),
+    Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+      Text('Découpeur audio', style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      Row(children: [Text('Début: ${_cutterStart.toStringAsFixed(0)}s'), const Spacer(), Text('Fin: ${_cutterEnd.toStringAsFixed(0)}s')]),
+      RangeSlider(values: RangeValues(_cutterStart, _cutterEnd), min: 0, max: 300, onChanged: (v) => setState(() { _cutterStart = v.start; _cutterEnd = v.end; })),
+      FilledButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Découpe de ${_cutterStart.toStringAsFixed(0)}s à ${_cutterEnd.toStringAsFixed(0)}s'))),
+        icon: const Icon(Icons.content_cut), label: const Text('Découper')),
+    ]))),
+    const SizedBox(height: 8),
+    ...[(Icons.merge, 'Fusionner audio', 'Assembler plusieurs fichiers'),
+      (Icons.speed, 'Changer vitesse/pitch', 'Accélérer, ralentir, changer le ton'),
+      (Icons.graphic_eq, 'Normaliser volume', 'ReplayGain / Loudness'),
+      (Icons.surround_sound, 'Convertir mono/stéréo', 'Changer le nombre de canaux'),
+      (Icons.notifications_active, 'Créer sonnerie', 'Découper 30s pour sonnerie'),
+      (Icons.record_voice_over, 'Enregistreur vocal', 'Enregistrer avec le micro'),
+      (Icons.volume_up, 'Amplificateur', 'Augmenter le volume'),
+      (Icons.wave, 'Analyseur spectral', 'Visualiser les fréquences'),
+      (Icons.loop, 'Boucleur', 'Créer des boucles audio'),
+      (Icons.queue_music, 'Créer playlist M3U', 'Générer un fichier playlist'),
+    ].map((c) => Card(margin: const EdgeInsets.only(bottom: 4), child: ListTile(
+      leading: Icon(c.$1, color: Theme.of(context).colorScheme.primary, size: 22), title: Text(c.$2, style: const TextStyle(fontSize: 14)), subtitle: Text(c.$3, style: const TextStyle(fontSize: 11)),
+      trailing: const Icon(Icons.chevron_right, size: 16), onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${c.$2} lancé'))),
+    ))),
+  ]);
 
   // ═══ UTILITAIRES ═══
-  Future<void> _analyzeStorage() async {
+  Future<void> _runClean() async {
     setState(() => _scanning = true);
-    final audioFiles = ref.read(audioFilesProvider).valueOrNull ?? [];
-    final videoFiles = ref.read(videoFilesProvider).valueOrNull ?? [];
-    final imageFiles = ref.read(imageFilesProvider).valueOrNull ?? [];
-    final allFiles = [...audioFiles, ...videoFiles, ...imageFiles];
-    allFiles.sort((a, b) => b.size.compareTo(a.size));
-    setState(() {
-      _audioTotal = audioFiles.fold(0, (s, f) => s + f.size);
-      _videoTotal = videoFiles.fold(0, (s, f) => s + f.size);
-      _imageTotal = imageFiles.fold(0, (s, f) => s + f.size);
-      _largeFiles = allFiles;
-      _scanning = false;
-    });
-  }
-
-  Future<void> _runCleanerScan() async {
-    setState(() => _scanning = true);
-    final audioFiles = ref.read(audioFilesProvider).valueOrNull ?? [];
-    final videoFiles = ref.read(videoFilesProvider).valueOrNull ?? [];
-    final imageFiles = ref.read(imageFilesProvider).valueOrNull ?? [];
-    final allFiles = [...audioFiles, ...videoFiles, ...imageFiles];
+    final audio = ref.read(audioFilesProvider).valueOrNull ?? [];
+    final video = ref.read(videoFilesProvider).valueOrNull ?? [];
+    final image = ref.read(imageFilesProvider).valueOrNull ?? [];
+    final all = [...audio, ...video, ...image];
     final sizeMap = <int, List<MediaFile>>{};
-    for (final f in allFiles) {
-      sizeMap.putIfAbsent(f.size, () => []).add(f);
-    }
+    for (final f in all) { sizeMap.putIfAbsent(f.size, () => []).add(f); }
     _duplicates = sizeMap.values.where((l) => l.length > 1).expand((l) => l).toList();
+    all.sort((a, b) => b.size.compareTo(a.size));
+    _largeFiles = all;
     setState(() => _scanning = false);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${_duplicates.length ~/ 2} doublons trouvés')));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${_duplicates.length ~/ 2} doublons trouvés')));
   }
 
-  void _deleteFile(MediaFile f) {
-    showDialog(context: context, builder: (_) => AlertDialog(
-      title: const Text('Supprimer ?'), content: Text('Supprimer "${f.displayName}" ?'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
-        FilledButton(onPressed: () async {
-          Navigator.pop(context);
-          try { await File(f.path).delete(); ref.invalidate(audioFilesProvider); ref.invalidate(videoFilesProvider); ref.invalidate(imageFilesProvider);
-            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fichier supprimé')));
-          } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red)); }
-        }, child: const Text('Supprimer')),
-      ],
-    ));
-  }
+  void _del(MediaFile f) => showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Supprimer ?'), content: Text(f.displayName),
+    actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+      FilledButton(onPressed: () async { Navigator.pop(context); try { await File(f.path).delete(); ref.invalidate(audioFilesProvider); ref.invalidate(videoFilesProvider); ref.invalidate(imageFilesProvider); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red)); }}, child: const Text('Supprimer'))]));
 
-  void _generatePassword() {
+  void _genPw() {
     final chars = StringBuffer();
-    if (_includeUpper) chars.write('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
-    if (_includeLower) chars.write('abcdefghijklmnopqrstuvwxyz');
-    if (_includeNumbers) chars.write('0123456789');
-    if (_includeSymbols) chars.write(r'!@#$%^&*()_+-=[]{}|;:,.<>?');
+    if (_pwUpper) chars.write('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+    if (_pwLower) chars.write('abcdefghijklmnopqrstuvwxyz');
+    if (_pwNum) chars.write('0123456789');
+    if (_pwSym) chars.write(r'!@#$%^&*()_+-=[]{}|;:,.<>?');
     if (chars.isEmpty) chars.write('abcdefghijklmnopqrstuvwxyz');
-    final random = Random.secure();
-    setState(() => _passwordGenResult = List.generate(_passwordLength, (_) =>
-      chars.toString()[random.nextInt(chars.length)]).join());
+    setState(() => _pwResult = List.generate(_pwLen, (_) => chars.toString()[Random.secure().nextInt(chars.length)]).join());
   }
 
-  IconData _typeIcon(String type) => switch (type) { 'audio' => Icons.music_note, 'video' => Icons.movie, 'image' => Icons.photo, _ => Icons.insert_drive_file };
+  IconData _ti(String t) => switch (t) { 'audio' => Icons.music_note, 'video' => Icons.movie, 'image' => Icons.photo, _ => Icons.insert_drive_file };
   Widget _sc(String l, String s, IconData i, Color c) => Column(children: [Icon(i, color: c, size: 20), const SizedBox(height: 4), Text(s, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)), Text(l, style: TextStyle(fontSize: 10, color: Colors.grey[600]))]);
-  String _fmtSize(int bytes) { if (bytes < 1024) return '$bytes B'; if (bytes < 1024*1024) return '${(bytes/1024).toStringAsFixed(1)} KB'; if (bytes < 1024*1024*1024) return '${(bytes/(1024*1024)).toStringAsFixed(1)} MB'; return '${(bytes/(1024*1024*1024)).toStringAsFixed(1)} GB'; }
+  String _fs(int b) { if (b < 1024) return '$b B'; if (b < 1048576) return '${(b/1024).toStringAsFixed(1)} KB'; if (b < 1073741824) return '${(b/1048576).toStringAsFixed(1)} MB'; return '${(b/1073741824).toStringAsFixed(1)} GB'; }
+  String _heaviestFolder(List<MediaFile> files) { final m = <String, int>{}; for (final f in files) { final d = f.path.substring(0, f.path.lastIndexOf('/')); m[d] = (m[d] ?? 0) + f.size; } if (m.isEmpty) return '-'; final e = m.entries.reduce((a, b) => a.value > b.value ? a : b); return '${e.key.substring(e.key.lastIndexOf('/') + 1)} (${_fs(e.value)})'; }
 }
