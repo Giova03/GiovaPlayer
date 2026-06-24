@@ -201,7 +201,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
           child: VideoProgressIndicator(_controller!, allowScrubbing: true,
             colors: const VideoProgressColors(playedColor: Colors.red, bufferedColor: Colors.redAccent))),
         // Bottom controls
-        Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, isFullscreen ? 24 : 8),
+        Padding(padding: EdgeInsets.fromLTRB(16, 4, 16, isFullscreen ? 24.0 : 8.0),
           child: Row(children: [
             Text(_fmt(pos), style: const TextStyle(color: Colors.white70, fontSize: 12)),
             const SizedBox(width: 8),

@@ -193,7 +193,7 @@ class _ImageDetailScreenState extends State<_ImageDetailScreen> {
         onPageChanged: (i) => setState(() => _currentIndex = i),
         itemBuilder: (_, i) => InteractiveViewer(minScale: 0.5, maxScale: 5.0,
           child: Center(child: Image.file(File(widget.images[i].path), fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 64, color: Colors.white54))),
+            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 64, color: Colors.white54)))),
       ),
     );
   }

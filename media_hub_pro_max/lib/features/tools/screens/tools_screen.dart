@@ -282,10 +282,10 @@ class _ToolsScreenState extends ConsumerState<ToolsScreen> with TickerProviderSt
         const SizedBox(height: 12),
         ...['Aucune donnée personnelle collectée', 'Aucun envoi à des serveurs',
           'Chiffrement AES-256-GCM', 'Aucun tracking', 'Permissions minimales',
-          'RGPD par design', 'Panic PIN (9999)', 'Anti-screenshot coffre'].map((r) =>
+          'RGPD par design', 'Panic PIN 9999', 'Anti-screenshot coffre'].map((r) =>
           Padding(padding: const EdgeInsets.only(bottom: 4), child: Row(children: [
             Icon(Icons.check_circle, size: 14, color: cs.onTertiaryContainer),
-            const SizedBox(width: 6), Text(r, style: TextStyle(color: cs.onTertiaryContainer, fontSize: 12))])),
+            const SizedBox(width: 6), Text(r, style: TextStyle(color: cs.onTertiaryContainer, fontSize: 12))]))),
       ]))),
       const SizedBox(height: 16),
       // Générateur de mots de passe
