@@ -160,7 +160,7 @@ class _ToolsScreenState extends ConsumerState<ToolsScreen> with TickerProviderSt
       SwitchListTile(title: const Text('Symboles'), value: _pwSym, onChanged: (v) => setState(() => _pwSym = v), dense: true),
       const SizedBox(height: 8),
       Row(children: [Expanded(child: FilledButton.icon(onPressed: _genPw, icon: const Icon(Icons.refresh), label: const Text('Générer'))),
-        if (_pwResult.isNotEmpty) ...[const SizedBox(width: 8), IconButton.filled(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copié !'))), icon: const Icon(Icons.copy))]),
+        if (_pwResult.isNotEmpty) ...[const SizedBox(width: 8), IconButton.filled(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copié !'))), icon: const Icon(Icons.copy))]]),
     ]))),
     const SizedBox(height: 16),
     ...[(Icons.enhanced_encryption, 'Chiffrer un fichier', 'AES-256-GCM'),

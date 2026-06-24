@@ -55,7 +55,7 @@ class _IaPhotoFixScreenState extends ConsumerState<IaPhotoFixScreen> {
   Widget _sl(String l, double v, double mn, double mx, ValueChanged<double> cb) => Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
     child: Row(children: [SizedBox(width: 90, child: Text(l, style: const TextStyle(fontSize: 12))), Expanded(child: Slider(value: v, min: mn, max: mx, onChanged: cb))]));
 
-  List<double> _colorMatrix => [
+  List<double> get _colorMatrix => [
     (1 + _contrast) * (_saturation + _sepia * 0.3), _sepia * 0.7, _sepia * 0.2, 0, _brightness * 255,
     _sepia * 0.2, (1 + _contrast) * _saturation, _sepia * 0.1, 0, _brightness * 255,
     _sepia * 0.1, _sepia * 0.3, (1 + _contrast) * (_saturation + _sepia * 0.6), 0, _brightness * 255,
