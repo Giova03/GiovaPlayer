@@ -26,21 +26,20 @@ class MediaProcessor {
   /// Execute with progress callback
   static Future<bool> executeWithProgress(
     String command, {
-    void Function(int time, double duration)? onProgress,
+    void Function(int time, int duration)? onProgress,
   }) async {
     try {
       if (onProgress != null) {
         FFmpegKitConfig.enableStatisticsCallback((Statistics stats) {
-          final timeMs = stats.getTime();
-          onProgress(timeMs, 0);
+          onProgress(stats.getTime(), stats.getBitrate());
         });
       }
       final session = await FFmpegKit.execute(command);
       final returnCode = await session.getReturnCode();
-      FFmpegKitConfig.clearStatisticsCallback();
+      FFmpegKitConfig.enableStatisticsCallback(null);
       return ReturnCode.isSuccess(returnCode);
     } catch (e) {
-      FFmpegKitConfig.clearStatisticsCallback();
+      FFmpegKitConfig.enableStatisticsCallback(null);
       debugPrint('FFmpeg error: $e');
       return false;
     }
