@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -147,7 +148,7 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
       PopupMenuButton(itemBuilder: (_) => [
         const PopupMenuItem(value: 'change_pin', child: Text('Changer le PIN')),
         const PopupMenuItem(value: 'biometric', child: Text('Configurer biométrie')),
-        const PopupMenuItem(value: 'break_log', child: Text('Journal intrusions (${_breakIns.length})')),
+        PopupMenuItem(value: 'break_log', child: Text('Journal intrusions (${_breakIns.length})')),
         const PopupMenuItem(value: 'emergency', child: Text('Effacement urgence')),
         const PopupMenuItem(value: 'reset', child: Text('Réinitialiser')),
       ], onSelected: _onAction),
@@ -185,12 +186,15 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
 
       // CARTES
       _sectionHeader(Icons.credit_card, 'Cartes bancaires', '${_cards.length}', () => _showAddCard()),
-      ..._cards.map((c) => Dismissible(key: Key('card_${c['id']}'), direction: DismissDirection.endToStart,
+      ..._cards.map((c) {
+        final num = (c['number_encrypted'] ?? '') as String;
+        final last4 = num.length > 4 ? num.substring(0, 4) : '****';
+        return Dismissible(key: Key('card_${c['id']}'), direction: DismissDirection.endToStart,
         onDismissed: (_) async { await _db.deleteVaultCard(c['id'] as int); _loadData(); },
         background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 16), child: const Icon(Icons.delete, color: Colors.white)),
         child: Card(child: ListTile(leading: Icon(Icons.credit_card, color: c['card_type'] == 'Visa' ? Colors.blue : c['card_type'] == 'Mastercard' ? Colors.orange : Colors.purple),
-          title: Text('${c['holder']} • ${c['card_type']}', style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text('**** ${((c['number_encrypted'] ?? '') as String).length > 4 ? (c['number_encrypted'] as String).substring(0, 4) : '****'} • ${c['expiry']}')))),
+          title: Text('${c['holder']} - ${c['card_type']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text('**** $last4 - ${c['expiry']}')))); }),
       const SizedBox(height: 8),
 
       // PHOTOS CHIFFRÉES (RÉEL)
@@ -519,7 +523,7 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
           subtitle: Text(DateTime.fromMillisecondsSinceEpoch(e['timestamp'] as int).toString().substring(0, 19), style: const TextStyle(fontSize: 11)))),
         const SizedBox(height: 12),
         OutlinedButton.icon(onPressed: () async { await _db.clearBreakInLog(); Navigator.pop(context); _loadData(); }, icon: const Icon(Icons.delete), label: const Text('Effacer le journal')),
-      ];
+      ]);
     }));
 
   void _emergencyWipe() => showDialog(context: context, builder: (_) => AlertDialog(

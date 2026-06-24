@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:ffmpeg_kit_flutter_audio/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_audio/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_audio/return_code.dart';
 import 'package:ffmpeg_kit_flutter_audio/media_information_session.dart';
 import 'package:ffmpeg_kit_flutter_audio/statistics.dart';
@@ -29,7 +30,7 @@ class MediaProcessor {
   }) async {
     try {
       if (onProgress != null) {
-        FFmpegKitConfig.enableStatisticsCallback((stats) {
+        FFmpegKitConfig.enableStatisticsCallback((Statistics stats) {
           final timeMs = stats.getTime();
           onProgress(timeMs, 0);
         });
@@ -84,8 +85,6 @@ class MediaProcessor {
   }
 
   /// Convert audio to a different format
-  /// [format] = 'mp3', 'aac', 'flac', 'wav', 'ogg', 'm4a'
-  /// [bitrate] = '128k', '192k', '256k', '320k' (for lossy formats)
   static Future<String?> convertAudio({
     required String inputPath,
     required String format,
@@ -153,7 +152,7 @@ class MediaProcessor {
     return success ? output : null;
   }
 
-  /// Change audio speed (0.5 = half speed, 2.0 = double speed)
+  /// Change audio speed
   static Future<String?> changeSpeed({
     required String inputPath,
     required double speed,
@@ -173,17 +172,15 @@ class MediaProcessor {
     if (inputPaths.isEmpty) return null;
     if (inputPaths.length == 1) return inputPaths.first;
 
-    // Create a concat file list
     final tempDir = await getTemporaryDirectory();
     final listFile = p.join(tempDir.path, 'concat_list_${DateTime.now().millisecondsSinceEpoch}.txt');
-    final entries = inputPaths.map((p) => "file '$p'").join('\n');
+    final entries = inputPaths.map((fp) => "file '$fp'").join('\n');
     await File(listFile).writeAsString(entries);
 
     final output = outputPath ?? await _getOutputPath(inputPaths.first, '_merged');
     final cmd = '-y -f concat -safe 0 -i "$listFile" -c copy "$output"';
     final success = await execute(cmd);
 
-    // Clean up temp file
     try { await File(listFile).delete(); } catch (_) {}
 
     return success ? output : null;
@@ -242,7 +239,7 @@ class MediaProcessor {
     return success ? output : null;
   }
 
-  /// Amplify audio volume (1.0 = normal, 2.0 = double, 0.5 = half)
+  /// Amplify audio volume
   static Future<String?> amplify({
     required String inputPath,
     required double factor,
@@ -268,7 +265,7 @@ class MediaProcessor {
   /// Convert mono to stereo or stereo to mono
   static Future<String?> changeChannels({
     required String inputPath,
-    required int channels, // 1=mono, 2=stereo
+    required int channels,
     String? outputPath,
   }) async {
     final output = outputPath ?? await _getOutputPath(inputPath, '_ch');
@@ -277,7 +274,7 @@ class MediaProcessor {
     return success ? output : null;
   }
 
-  /// Create ringtone (30 seconds from start or custom position)
+  /// Create ringtone
   static Future<String?> createRingtone({
     required String inputPath,
     double startSec = 0,

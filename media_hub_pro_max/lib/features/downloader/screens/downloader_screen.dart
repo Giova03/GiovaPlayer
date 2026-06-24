@@ -89,7 +89,7 @@ class _DownloaderScreenState extends State<DownloaderScreen> with TickerProvider
 
           // IN PROGRESS tab
           _activeTasks.isEmpty
-            ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.cloud_download, size: 64, color: Colors.grey), SizedBox(height: 16), Text('Aucun téléchargement en cours')])
+            ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.cloud_download, size: 64, color: Colors.grey[400]), const SizedBox(height: 16), const Text('Aucun téléchargement en cours')]))
             : ListView.builder(itemCount: _activeTasks.length, itemBuilder: (_, i) {
               final task = _activeTasks[i];
               return Card(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

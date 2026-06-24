@@ -182,14 +182,14 @@ class _ToolsScreenState extends ConsumerState<ToolsScreen> with TickerProviderSt
         ('mp3', 'Vidéo → MP3', 'Extraire audio en MP3', Icons.music_note),
         ('aac', 'Vidéo → AAC', 'Extraire audio en AAC/M4A', Icons.audiotrack),
         ('flac', 'Vidéo → FLAC', 'Extraire audio sans perte', Icons.high_quality),
-        ('wav', 'Vidéo → WAV', 'Extraire audio PCM', Icons.wave),
+        ('wav', 'Vidéo → WAV', 'Extraire audio PCM', Icons.graphic_eq),
       ]);
     }
     opts.addAll([
       ('mp3', 'Audio → MP3', 'Format universel compressé', Icons.music_note),
       ('aac', 'Audio → AAC', 'Meilleure qualité/taille', Icons.audiotrack),
       ('flac', 'Audio → FLAC', 'Sans perte (grand fichier)', Icons.high_quality),
-      ('wav', 'Audio → WAV', 'Audio brut non compressé', Icons.wave),
+      ('wav', 'Audio → WAV', 'Audio brut non compressé', Icons.graphic_eq),
       ('ogg', 'Audio → OGG', 'Format libre Vorbis', Icons.graphic_eq),
       ('opus', 'Audio → Opus', 'Nouveau codec performant', Icons.surround_sound),
     ]);
