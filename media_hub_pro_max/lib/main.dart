@@ -39,16 +39,8 @@ class GiovaPlayerApp extends ConsumerWidget {
         debugShowCheckedModeBanner: false,
         routerConfig: router,
         locale: const Locale('fr', 'FR'),
-        theme: ThemeData(
-          useMaterial3: true,
-          colorSchemeSeed: seed,
-          brightness: Brightness.light,
-        ),
-        darkTheme: ThemeData(
-          useMaterial3: true,
-          colorSchemeSeed: seed,
-          brightness: Brightness.dark,
-        ),
+        theme: ThemeData(useMaterial3: true, colorSchemeSeed: seed, brightness: Brightness.light),
+        darkTheme: ThemeData(useMaterial3: true, colorSchemeSeed: seed, brightness: Brightness.dark),
         themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       );
     });

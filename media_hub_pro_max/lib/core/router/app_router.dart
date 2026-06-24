@@ -63,21 +63,17 @@ class _Home extends ConsumerWidget {
         const PopupMenuItem(value: 'theme', child: Text('Changer thème')),
         const PopupMenuItem(value: 'about', child: Text('À propos')),
       ], onSelected: (v) {
-        if (v == 'theme') {
-          final idx = ref.read(themeSeedProvider);
-          ref.read(themeSeedProvider.notifier).state = idx + 1;
-        }
+        if (v == 'theme') ref.read(themeSeedProvider.notifier).state = ref.read(themeSeedProvider) + 1;
       }),
       IconButton(icon: Icon(ref.watch(isDarkModeProvider) ? Icons.light_mode : Icons.dark_mode),
         onPressed: () => ref.read(isDarkModeProvider.notifier).state = !ref.read(isDarkModeProvider)),
     ]), body: ListView(padding: const EdgeInsets.all(16), children: [
-      // Bannière
       Card(color: cs.primaryContainer, child: Padding(padding: const EdgeInsets.all(20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [Icon(Icons.auto_awesome, color: cs.onPrimaryContainer), const SizedBox(width: 12),
-            Expanded(child: Text('GiovaPlayer v3.0', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: cs.onPrimaryContainer)))]),
+            Expanded(child: Text('GiovaPlayer v4.0', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: cs.onPrimaryContainer)))]),
           const SizedBox(height: 8),
-          Text('6 apps en 1 • 100% offline • Vos données restent sur votre appareil',
+          Text('6 apps en 1 • Audio arrière-plan • Vidéo plein écran • 100% offline',
             style: TextStyle(color: cs.onPrimaryContainer.withOpacity(0.8), fontSize: 13)),
           const SizedBox(height: 4),
           Text('Contact: giobamos03@gmail.com | WhatsApp: +22670698070',
@@ -89,9 +85,9 @@ class _Home extends ConsumerWidget {
       GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.5,
         children: [
-          _Mod('Audio', Icons.headphones, '/audio', 'Lecteur Hi-Res', cs),
-          _Mod('Vidéo', Icons.play_circle, '/video', 'Lecteur 8K HDR', cs),
-          _Mod('Galerie', Icons.photo_library, '/gallery', 'Photos & IA', cs),
+          _Mod('Audio', Icons.headphones, '/audio', 'Hi-Res + Arrière-plan', cs),
+          _Mod('Vidéo', Icons.play_circle, '/video', '8K + Plein écran', cs),
+          _Mod('Galerie', Icons.photo_library, '/gallery', 'Dossiers + IA', cs),
           _Mod('Coffre', Icons.lock, '/vault', 'AES-256 + PIN', cs),
           _Mod('Download', Icons.download, '/downloader', 'Gestionnaire', cs),
           _Mod('Outils', Icons.build, '/tools', 'Convertisseur+', cs),
@@ -101,12 +97,12 @@ class _Home extends ConsumerWidget {
         Row(children: [Icon(Icons.security, color: cs.tertiary), const SizedBox(width: 12),
           Expanded(child: Text('Protection des données', style: Theme.of(context).textTheme.titleSmall))]),
         const SizedBox(height: 8),
-        const Text('- Aucune donnée collectée ou envoyée à un serveur', style: TextStyle(fontSize: 12)),
-        const Text('- Toutes les données restent sur votre appareil', style: TextStyle(fontSize: 12)),
-        const Text('- Chiffrement AES-256 pour le coffre-fort', style: TextStyle(fontSize: 12)),
-        const Text('- Aucun analytics, aucun tracking', style: TextStyle(fontSize: 12)),
-        const Text('- Permissions demandées uniquement si nécessaire', style: TextStyle(fontSize: 12)),
-        const Text('- Droit de suppression totale des données', style: TextStyle(fontSize: 12)),
+        ...['Aucune donnée collectée ou envoyée à un serveur', 'Toutes les données restent sur votre appareil',
+          'Chiffrement AES-256 pour le coffre-fort', 'Aucun analytics, aucun tracking',
+          'Permissions demandées uniquement si nécessaire', 'Droit de suppression totale des données'].map((t) =>
+          Padding(padding: const EdgeInsets.only(bottom: 4), child: Row(children: [
+            Icon(Icons.check_circle, size: 14, color: cs.tertiary), const SizedBox(width: 6),
+            Expanded(child: Text(t, style: const TextStyle(fontSize: 12)))]))),
       ]))),
     ]));
   }
