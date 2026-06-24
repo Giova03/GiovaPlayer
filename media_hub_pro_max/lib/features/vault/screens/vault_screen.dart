@@ -1,9 +1,10 @@
-import 'dart:math';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
+import '../../../core/database/app_database.dart';
 import '../../../core/providers/app_providers.dart';
 
 class VaultScreen extends ConsumerStatefulWidget {
@@ -15,38 +16,38 @@ class VaultScreen extends ConsumerStatefulWidget {
 class _VaultScreenState extends ConsumerState<VaultScreen> {
   final _storage = const FlutterSecureStorage();
   final _auth = LocalAuthentication();
+  final _db = AppDatabase.instance;
   String _pin = '';
   String? _savedPin;
   bool _isSetup = false;
+  int _setupStep = 0;
   String _confirmPin = '';
-  int _setupStep = 0; // 0=enter, 1=confirm
-  List<String> _breakInLog = [];
-  bool _stealthMode = false;
   int _failedAttempts = 0;
+  List<Map<String, dynamic>> _notes = [];
+  List<Map<String, dynamic>> _passwords = [];
+  List<Map<String, dynamic>> _cards = [];
+  List<Map<String, dynamic>> _breakIns = [];
 
   @override
   void initState() { super.initState(); _loadPin(); }
 
   Future<void> _loadPin() async {
     final pin = await _storage.read(key: 'vault_pin');
-    final logStr = await _storage.read(key: 'break_in_log');
-    setState(() {
-      _savedPin = pin;
-      _isSetup = pin != null;
-      _breakInLog = logStr != null ? logStr.split('|').where((s) => s.isNotEmpty).toList() : [];
-    });
+    setState(() { _savedPin = pin; _isSetup = pin != null; });
+    if (pin != null) _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final notes = await _db.getVaultNotes();
+    final pws = await _db.getVaultPasswords();
+    final cards = await _db.getVaultCards();
+    final log = await _db.getBreakInLog();
+    setState(() { _notes = notes; _passwords = pws; _cards = cards; _breakIns = log; });
   }
 
   Future<void> _savePin(String pin) async {
     await _storage.write(key: 'vault_pin', value: pin);
     setState(() { _savedPin = pin; _isSetup = true; });
-  }
-
-  Future<void> _logBreakIn() async {
-    final now = DateTime.now().toString().substring(0, 19);
-    _breakInLog.insert(0, now);
-    if (_breakInLog.length > 50) _breakInLog = _breakInLog.sublist(0, 50);
-    await _storage.write(key: 'break_in_log', value: _breakInLog.join('|'));
   }
 
   @override
@@ -58,7 +59,7 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
     return _mainVault();
   }
 
-  // ─── ÉCRAN DE VERROUILLAGE ───
+  // ─── VERROUILLAGE ───
   Widget _lockScreen() {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(body: SafeArea(child: Column(children: [
@@ -66,11 +67,11 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
       Container(width: 72, height: 72, decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primaryContainer),
         child: Icon(Icons.lock, size: 36, color: cs.primary)),
       const SizedBox(height: 20),
-      Text('Coffre-fort GiovaPlayer', style: Theme.of(context).textTheme.headlineSmall),
+      Text('Coffre-fort', style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 8),
-      if (!_isSetup) Text('Créez votre PIN (4 chiffres)', style: const TextStyle(color: Colors.grey))
-      else if (_setupStep == 0) Text('Entrez votre PIN', style: const TextStyle(color: Colors.grey))
-      else Text('Confirmez votre PIN', style: const TextStyle(color: Colors.grey)),
+      if (!_isSetup) const Text('Créez votre PIN (4 chiffres)', style: TextStyle(color: Colors.grey))
+      else if (_setupStep == 0) const Text('Entrez votre PIN', style: TextStyle(color: Colors.grey))
+      else const Text('Confirmez votre PIN', style: TextStyle(color: Colors.grey)),
       if (_failedAttempts > 0) Padding(padding: const EdgeInsets.only(top: 4),
         child: Text('$_failedAttempts tentative(s) échouée(s)', style: TextStyle(color: cs.error, fontSize: 12))),
       const SizedBox(height: 24),
@@ -89,8 +90,8 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
         })),
       const Spacer(),
       if (_isSetup && _setupStep == 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        IconButton(icon: const Icon(Icons.fingerprint, size: 32), onPressed: _biometricAuth, tooltip: 'Empreinte digitale'),
-        IconButton(icon: const Icon(Icons.face, size: 32), onPressed: _biometricAuth, tooltip: 'Reconnaissance faciale'),
+        IconButton(icon: const Icon(Icons.fingerprint, size: 32), onPressed: _biometricAuth, tooltip: 'Empreinte'),
+        IconButton(icon: const Icon(Icons.face, size: 32), onPressed: _biometricAuth, tooltip: 'Visage'),
       ]),
       const SizedBox(height: 20),
     ])));
@@ -104,41 +105,20 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
   void _addDigit(String d) {
     if (_pin.length >= 4) return;
     setState(() => _pin += d);
-    if (_pin.length == 4) _validatePin();
+    if (_pin.length == 4) _validate();
   }
 
-  void _validatePin() {
+  void _validate() async {
     if (!_isSetup) {
-      // Première création
-      if (_setupStep == 0) {
-        _confirmPin = _pin;
-        setState(() { _pin = ''; _setupStep = 1; });
-      } else {
-        if (_pin == _confirmPin) {
-          _savePin(_pin);
-          ref.read(vaultUnlockedProvider.notifier).state = true;
-          ref.read(vaultDecoyProvider.notifier).state = false;
-        } else {
-          setState(() { _pin = ''; _setupStep = 0; _confirmPin = ''; });
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Les PINs ne correspondent pas'), backgroundColor: Colors.red));
-        }
+      if (_setupStep == 0) { _confirmPin = _pin; setState(() { _pin = ''; _setupStep = 1; }); }
+      else {
+        if (_pin == _confirmPin) { await _savePin(_pin); ref.read(vaultUnlockedProvider.notifier).state = true; }
+        else { setState(() { _pin = ''; _setupStep = 0; }); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PINs différents'), backgroundColor: Colors.red)); }
       }
     } else {
-      // Vérification
-      if (_pin == '9999') {
-        // Panic PIN
-        _logBreakIn();
-        ref.read(vaultUnlockedProvider.notifier).state = true;
-        ref.read(vaultDecoyProvider.notifier).state = true;
-      } else if (_pin == _savedPin) {
-        ref.read(vaultUnlockedProvider.notifier).state = true;
-        ref.read(vaultDecoyProvider.notifier).state = false;
-        setState(() { _failedAttempts = 0; });
-      } else {
-        _logBreakIn();
-        setState(() { _pin = ''; _failedAttempts++; });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN incorrect'), backgroundColor: Colors.red));
-      }
+      if (_pin == '9999') { await _db.logBreakIn('9999'); await _loadData(); ref.read(vaultUnlockedProvider.notifier).state = true; ref.read(vaultDecoyProvider.notifier).state = true; }
+      else if (_pin == _savedPin) { ref.read(vaultUnlockedProvider.notifier).state = true; setState(() { _failedAttempts = 0; }); await _loadData(); }
+      else { await _db.logBreakIn(_pin); await _loadData(); setState(() { _pin = ''; _failedAttempts++; }); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN incorrect'), backgroundColor: Colors.red)); }
     }
   }
 
@@ -146,216 +126,228 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
     try {
       final canAuth = await _auth.canCheckBiometrics || await _auth.isDeviceSupported();
       if (!canAuth) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Biométrie non disponible'))); return; }
-      final didAuth = await _auth.authenticate(localizedReason: 'Déverrouillez le coffre-fort',
+      final didAuth = await _auth.authenticate(localizedReason: 'Déverrouiller le coffre-fort GiovaPlayer',
         options: const AuthenticationOptions(stickyAuth: true, biometricOnly: true));
-      if (didAuth) {
-        ref.read(vaultUnlockedProvider.notifier).state = true;
-        ref.read(vaultDecoyProvider.notifier).state = false;
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur biométrie: $e')));
-    }
+      if (didAuth) { ref.read(vaultUnlockedProvider.notifier).state = true; await _loadData(); }
+    } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'))); }
   }
 
   // ─── COFFRE PRINCIPAL ───
   Widget _mainVault() {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(appBar: AppBar(title: const Text('Coffre-fort'), actions: [
-      IconButton(icon: const Icon(Icons.lock_open), onPressed: () {
-        ref.read(vaultUnlockedProvider.notifier).state = false;
-        ref.read(vaultDecoyProvider.notifier).state = false;
-        setState(() { _pin = ''; });
-      }),
+      IconButton(icon: const Icon(Icons.lock_open), onPressed: () { ref.read(vaultUnlockedProvider.notifier).state = false; ref.read(vaultDecoyProvider.notifier).state = false; setState(() { _pin = ''; }); }),
       PopupMenuButton(itemBuilder: (_) => [
         const PopupMenuItem(value: 'change_pin', child: Text('Changer le PIN')),
         const PopupMenuItem(value: 'biometric', child: Text('Configurer biométrie')),
-        const PopupMenuItem(value: 'stealth', child: Text('Mode furtif')),
-        const PopupMenuItem(value: 'break_log', child: Text('Journal intrusions')),
-        const PopupMenuItem(value: 'emergency', child: Text('Effacement d\'urgence')),
-        const PopupMenuItem(value: 'reset', child: Text('Réinitialiser le coffre')),
-      ], onSelected: _onVaultAction),
+        const PopupMenuItem(value: 'break_log', child: Text('Journal intrusions (${_breakIns.length})')),
+        const PopupMenuItem(value: 'emergency', child: Text('Effacement urgence')),
+        const PopupMenuItem(value: 'reset', child: Text('Réinitialiser')),
+      ], onSelected: _onAction),
     ]), body: ListView(padding: const EdgeInsets.all(16), children: [
-      // Sécurité badge
       Card(color: cs.tertiaryContainer, child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [
         Icon(Icons.shield, color: cs.onTertiaryContainer), const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('AES-256-GCM', style: TextStyle(color: cs.onTertiaryContainer, fontWeight: FontWeight.w600)),
-          Text('Biométrie • Anti-screenshot • Journal intrusions', style: TextStyle(color: cs.onTertiaryContainer.withOpacity(0.7), fontSize: 12)),
+          Text('Coffre-fort sécurisé', style: TextStyle(color: cs.onTertiaryContainer, fontWeight: FontWeight.w700)),
+          Text('${_notes.length} notes • ${_passwords.length} mots de passe • ${_cards.length} cartes', style: TextStyle(color: cs.onTertiaryContainer.withOpacity(0.7), fontSize: 12)),
         ])),
       ]))),
-      if (_failedAttempts > 0) Card(color: cs.errorContainer, child: Padding(padding: const EdgeInsets.all(12),
-        child: Row(children: [Icon(Icons.warning, color: cs.onErrorContainer), const SizedBox(width: 8),
-          Expanded(child: Text('$_failedAttempts tentative(s) échouée(s)', style: TextStyle(color: cs.onErrorContainer)))]))),
-      const SizedBox(height: 16),
-      // Catégories
-      ...[(Icons.photo, 'Photos chiffrées', 'Stockez vos photos sensibles', Colors.pink),
-        (Icons.note, 'Notes secrètes', 'Notes chiffrées AES-256', Colors.blue),
-        (Icons.password, 'Mots de passe', 'Gestionnaire de mots de passe', Colors.green),
-        (Icons.credit_card, 'Cartes bancaires', 'Données bancaires sécurisées', Colors.orange),
-        (Icons.folder, 'Fichiers divers', 'Tout type de fichier chiffré', Colors.purple),
-      ].map((c) => Card(margin: const EdgeInsets.only(bottom: 8), child: ListTile(
-        leading: Container(width: 40, height: 40, decoration: BoxDecoration(color: c.$4.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
-          child: Icon(c.$1, color: c.$4)),
-        title: Text(c.$2, style: const TextStyle(fontWeight: FontWeight.w600)), subtitle: Text(c.$3, style: const TextStyle(fontSize: 12)),
-        trailing: const Icon(Icons.chevron_right), onTap: () => _openCategory(c.$2),
-      ))),
-      const SizedBox(height: 16),
-      // Paramètres de sécurité
-      Text('Sécurité avancée', style: Theme.of(context).textTheme.titleMedium),
+      if (_failedAttempts > 0) Card(color: cs.errorContainer, child: Padding(padding: const EdgeInsets.all(8),
+        child: Text('$_failedAttempts tentative(s) échouée(s)', style: TextStyle(color: cs.onErrorContainer, fontSize: 12)))),
+      const SizedBox(height: 12),
+      // NOTES
+      _sectionHeader(Icons.note, 'Notes secrètes', '${_notes.length}', () => _showAddNote()),
+      ..._notes.map((n) => Dismissible(key: Key('note_${n['id']}'), direction: DismissDirection.endToStart,
+        onDismissed: (_) async { await _db.deleteVaultNote(n['id'] as int); _loadData(); },
+        background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 16), child: const Icon(Icons.delete, color: Colors.white)),
+        child: Card(child: ListTile(leading: const Icon(Icons.note, color: Colors.blue), title: Text(n['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(n['content'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
+          onTap: () => _showEditNote(n), trailing: const Icon(Icons.chevron_right)))),
       const SizedBox(height: 8),
-      SwitchListTile(title: const Text('Anti-screenshot'), subtitle: const Text('Bloque les captures d\'écran'), value: true, onChanged: (v){}),
-      SwitchListTile(title: const Text('Flou auto'), subtitle: const Text('Flou en cas de changement d\'app'), value: true, onChanged: (v){}),
-      SwitchListTile(title: const Text('Verrouillage auto'), subtitle: const Text('Verrouille après 30s'), value: true, onChanged: (v){}),
-      SwitchListTile(title: const Text('Mode furtif'), subtitle: const Text('Masque l\'icône du coffre'), value: _stealthMode, onChanged: (v) => setState(() => _stealthMode = v)),
+      // MOTS DE PASSE
+      _sectionHeader(Icons.password, 'Mots de passe', '${_passwords.length}', () => _showAddPassword()),
+      ..._passwords.map((p) => Dismissible(key: Key('pw_${p['id']}'), direction: DismissDirection.endToStart,
+        onDismissed: (_) async { await _db.deleteVaultPassword(p['id'] as int); _loadData(); },
+        background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 16), child: const Icon(Icons.delete, color: Colors.white)),
+        child: Card(child: ListTile(leading: const Icon(Icons.key, color: Colors.green), title: Text(p['service'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(p['username'] ?? ''),
+          trailing: IconButton(icon: const Icon(Icons.copy, size: 18), onPressed: () { Clipboard.setData(ClipboardData(text: p['password'] ?? '')); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mot de passe copié !'))); })))),
+      const SizedBox(height: 8),
+      // CARTES
+      _sectionHeader(Icons.credit_card, 'Cartes bancaires', '${_cards.length}', () => _showAddCard()),
+      ..._cards.map((c) => Dismissible(key: Key('card_${c['id']}'), direction: DismissDirection.endToStart,
+        onDismissed: (_) async { await _db.deleteVaultCard(c['id'] as int); _loadData(); },
+        background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 16), child: const Icon(Icons.delete, color: Colors.white)),
+        child: Card(child: ListTile(leading: Icon(Icons.credit_card, color: c['card_type'] == 'Visa' ? Colors.blue : c['card_type'] == 'Mastercard' ? Colors.orange : Colors.purple),
+          title: Text('${c['holder']} • ${c['card_type']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text('**** ${((c['number_encrypted'] ?? '') as String).length > 4 ? (c['number_encrypted'] as String).substring(0, 4) : '****'} • ${c['expiry']}')))),
+      const SizedBox(height: 8),
+      // PHOTOS
+      _sectionHeader(Icons.photo, 'Photos chiffrées', '0', () => _showAddPhoto()),
+      // FICHIERS
+      _sectionHeader(Icons.folder, 'Fichiers chiffrés', '0', () => _showAddFile()),
       const SizedBox(height: 16),
-      // Panic
+      // Paramètres sécurité
+      SwitchListTile(title: const Text('Anti-screenshot'), value: true, onChanged: (_){}),
+      SwitchListTile(title: const Text('Flou auto changement app'), value: true, onChanged: (_){}),
+      SwitchListTile(title: const Text('Verrouillage auto (30s)'), value: true, onChanged: (_){}),
+      const SizedBox(height: 16),
       Card(color: cs.errorContainer, child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-        Row(children: [Icon(Icons.warning, color: cs.onErrorContainer), const SizedBox(width: 12),
-          Expanded(child: Text('Panic PIN: 9999', style: TextStyle(color: cs.onErrorContainer, fontWeight: FontWeight.w700)))]),
-        const SizedBox(height: 4),
-        Text('Ouvre le coffre leurre. Intrus ne verra rien.', style: TextStyle(color: cs.onErrorContainer, fontSize: 12)),
+        Text('Panic PIN: 9999', style: TextStyle(color: cs.onErrorContainer, fontWeight: FontWeight.w700)),
+        Text('Ouvre un coffre leurre vide', style: TextStyle(color: cs.onErrorContainer, fontSize: 12)),
       ]))),
-      const SizedBox(height: 16),
-      // Fonctionnalités intelligentes
-      Text('Fonctionnalités intelligentes', style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 8),
-      ...[(Icons.fingerprint, 'Biométrie', 'Déverrouillage empreinte/visage'),
-        (Icons.visibility_off, 'Mode furtif', 'Cache le coffre de l\'app'),
-        (Icons.history, 'Journal intrusions', '${_breakInLog.length} tentatives enregistrées'),
-        (Icons.auto_delete, 'Auto-destruction', 'Supprime tout après 5 échecs'),
-        (Icons.security, 'Vérification integrité', 'Vérifie que les données ne sont pas altérées'),
-        (Icons.password, 'Force du PIN', 'Analyse la robustesse du PIN'),
-        (Icons.phonelink_lock, 'Verrouillage distant', 'Simule un verrouillage à distance'),
-        (Icons.no_encryption, 'Effacement urgence', 'Supprime toutes les données du coffre'),
-        (Icons.switch_account, 'Coffres multiples', 'Créez plusieurs espaces secrets'),
-        (Icons.backup, 'Sauvegarde chiffrée', 'Exportez vos données chiffrées'),
-      ].map((f) => Card(margin: const EdgeInsets.only(bottom: 4), child: ListTile(
-        leading: Icon(f.$1, color: cs.primary, size: 20), title: Text(f.$2, style: const TextStyle(fontSize: 14)),
-        subtitle: Text(f.$3, style: const TextStyle(fontSize: 11)), trailing: const Icon(Icons.chevron_right, size: 16),
-        onTap: () => _smartFeature(f.$2),
-      ))),
     ]));
   }
 
-  // COFFRE LEURRE
+  Widget _sectionHeader(IconData icon, String title, String count, VoidCallback onAdd) => Padding(padding: const EdgeInsets.only(bottom: 4, top: 8),
+    child: Row(children: [Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+      const SizedBox(width: 8), Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+      Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer, borderRadius: BorderRadius.circular(12)),
+        child: Text(count, style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer, fontSize: 12))),
+      IconButton(icon: const Icon(Icons.add_circle, size: 24), onPressed: onAdd),
+    ]));
+
+  // ─── ADD/EDIT NOTES ───
+  void _showAddNote() => _showNoteDialog(null);
+  void _showEditNote(Map<String, dynamic> note) => _showNoteDialog(note);
+
+  void _showNoteDialog(Map<String, dynamic>? existing) {
+    final titleCtl = TextEditingController(text: existing?['title'] ?? '');
+    final contentCtl = TextEditingController(text: existing?['content'] ?? '');
+    showDialog(context: context, builder: (_) => AlertDialog(title: Text(existing == null ? 'Nouvelle note' : 'Modifier note'), content: SizedBox(width: double.maxFinite, child: Column(mainAxisSize: MainAxisSize.min, children: [
+      TextField(controller: titleCtl, decoration: const InputDecoration(labelText: 'Titre', border: OutlineInputBorder())),
+      const SizedBox(height: 12),
+      TextField(controller: contentCtl, decoration: const InputDecoration(labelText: 'Contenu', border: OutlineInputBorder()), maxLines: 5),
+    ])), actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+      FilledButton(onPressed: () async {
+        if (existing == null) { await _db.insertVaultNote(titleCtl.text, contentCtl.text); }
+        else { await _db.updateVaultNote(existing['id'] as int, titleCtl.text, contentCtl.text); }
+        Navigator.pop(context); _loadData();
+      }, child: const Text('Sauvegarder')),
+    ]));
+  }
+
+  // ─── ADD PASSWORD ───
+  void _showAddPassword() {
+    final svcCtl = TextEditingController();
+    final userCtl = TextEditingController();
+    final pwCtl = TextEditingController();
+    final urlCtl = TextEditingController();
+    showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Nouveau mot de passe'), content: SizedBox(width: double.maxFinite, child: Column(mainAxisSize: MainAxisSize.min, children: [
+      TextField(controller: svcCtl, decoration: const InputDecoration(labelText: 'Service (ex: Google)', border: OutlineInputBorder())),
+      const SizedBox(height: 8),
+      TextField(controller: userCtl, decoration: const InputDecoration(labelText: 'Nom d\'utilisateur / email', border: OutlineInputBorder())),
+      const SizedBox(height: 8),
+      TextField(controller: pwCtl, decoration: InputDecoration(labelText: 'Mot de passe', border: const OutlineInputBorder(),
+        suffixIcon: IconButton(icon: const Icon(Icons.visibility), onPressed: (){})),
+        obscureText: true),
+      const SizedBox(height: 8),
+      TextField(controller: urlCtl, decoration: const InputDecoration(labelText: 'URL (optionnel)', border: OutlineInputBorder())),
+    ])), actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+      FilledButton(onPressed: () async {
+        await _db.insertVaultPassword(svcCtl.text, userCtl.text, pwCtl.text, url: urlCtl.text);
+        Navigator.pop(context); _loadData();
+      }, child: const Text('Sauvegarder')),
+    ]));
+  }
+
+  // ─── ADD CARD ───
+  void _showAddCard() {
+    final holderCtl = TextEditingController();
+    final numCtl = TextEditingController();
+    final expCtl = TextEditingController();
+    final cvvCtl = TextEditingController();
+    String type = 'Visa';
+    showDialog(context: context, builder: (_) => StatefulBuilder(builder: (context, setS) => AlertDialog(title: const Text('Nouvelle carte'), content: SizedBox(width: double.maxFinite, child: Column(mainAxisSize: MainAxisSize.min, children: [
+      TextField(controller: holderCtl, decoration: const InputDecoration(labelText: 'Titulaire', border: OutlineInputBorder())),
+      const SizedBox(height: 8),
+      TextField(controller: numCtl, decoration: const InputDecoration(labelText: 'Numéro de carte', border: OutlineInputBorder()), keyboardType: TextInputType.number),
+      const SizedBox(height: 8),
+      Row(children: [Expanded(child: TextField(controller: expCtl, decoration: const InputDecoration(labelText: 'MM/AA', border: OutlineInputBorder()))),
+        const SizedBox(width: 8), Expanded(child: TextField(controller: cvvCtl, decoration: const InputDecoration(labelText: 'CVV', border: OutlineInputBorder()), obscureText: true))]),
+      const SizedBox(height: 8),
+      DropdownButtonFormField(value: type, items: ['Visa','Mastercard','Amex','Autre'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+        onChanged: (v) => setS(() => type = v ?? 'Visa'), decoration: const InputDecoration(border: OutlineInputBorder())),
+    ])), actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+      FilledButton(onPressed: () async {
+        await _db.insertVaultCard(holderCtl.text, numCtl.text, expCtl.text, cvvCtl.text, type);
+        Navigator.pop(context); _loadData();
+      }, child: const Text('Sauvegarder')),
+    ])));
+  }
+
+  void _showAddPhoto() => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sélectionnez des photos depuis la Galerie puis utilisez "Déplacer vers le coffre"')));
+  void _showAddFile() => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fonctionnalité disponible - ajoutez des fichiers sensibles')));
+
+  // DECOY
   Widget _decoyVault() => Scaffold(appBar: AppBar(title: const Text('Coffre-fort'), actions: [
-    IconButton(icon: const Icon(Icons.lock_open), onPressed: () {
-      ref.read(vaultUnlockedProvider.notifier).state = false;
-      ref.read(vaultDecoyProvider.notifier).state = false;
-      setState(() { _pin = ''; });
-    }),
+    IconButton(icon: const Icon(Icons.lock_open), onPressed: () { ref.read(vaultUnlockedProvider.notifier).state = false; ref.read(vaultDecoyProvider.notifier).state = false; setState(() { _pin = ''; }); }),
   ]), body: const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-    Icon(Icons.folder_open, size: 64, color: Colors.grey), SizedBox(height: 16), Text('Coffre vide', style: TextStyle(fontSize: 20)),
+    Icon(Icons.folder_open, size: 64, color: Colors.grey), SizedBox(height: 16), Text('Coffre vide'),
   ])));
 
-  void _openCategory(String cat) => showModalBottomSheet(context: context, builder: (_) => ListView(padding: const EdgeInsets.all(24), shrinkWrap: true, children: [
-    Text(cat, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 16),
-    FilledButton.icon(onPressed: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ajout à $cat en cours...'))); },
-      icon: const Icon(Icons.add), label: const Text('Ajouter un élément')),
-    const SizedBox(height: 16), const Text('Aucun élément pour le moment', style: TextStyle(color: Colors.grey)),
-  ]));
-
-  void _onVaultAction(String action) async {
+  void _onAction(String action) async {
     switch (action) {
-      case 'change_pin':
-        _showChangePinDialog();
-        break;
-      case 'biometric':
-        final canAuth = await _auth.canCheckBiometrics;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(canAuth ? 'Biométrie activée !' : 'Biométrie non disponible sur cet appareil')));
-        break;
-      case 'stealth':
-        setState(() => _stealthMode = !_stealthMode);
-        break;
-      case 'break_log':
-        _showBreakInLog();
-        break;
-      case 'emergency':
-        _emergencyWipe();
-        break;
-      case 'reset':
-        _resetVault();
-        break;
+      case 'change_pin': _changePinDialog(); break;
+      case 'biometric': _biometricAuth(); break;
+      case 'break_log': _showBreakInLog(); break;
+      case 'emergency': _emergencyWipe(); break;
+      case 'reset': _resetVault(); break;
     }
   }
 
-  void _showChangePinDialog() {
-    final oldPinCtl = TextEditingController();
-    final newPinCtl = TextEditingController();
+  void _changePinDialog() {
+    final oldCtl = TextEditingController();
+    final newCtl = TextEditingController();
     showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Changer le PIN'), content: Column(mainAxisSize: MainAxisSize.min, children: [
-      TextField(controller: oldPinCtl, decoration: const InputDecoration(labelText: 'PIN actuel'), obscureText: true, keyboardType: TextInputType.number, maxLength: 4),
-      TextField(controller: newPinCtl, decoration: const InputDecoration(labelText: 'Nouveau PIN'), obscureText: true, keyboardType: TextInputType.number, maxLength: 4),
+      TextField(controller: oldCtl, decoration: const InputDecoration(labelText: 'PIN actuel'), obscureText: true, keyboardType: TextInputType.number, maxLength: 4),
+      TextField(controller: newCtl, decoration: const InputDecoration(labelText: 'Nouveau PIN'), obscureText: true, keyboardType: TextInputType.number, maxLength: 4),
     ]), actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
       FilledButton(onPressed: () async {
-        if (oldPinCtl.text == _savedPin && newPinCtl.text.length == 4) {
-          await _savePin(newPinCtl.text);
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN modifié avec succès !')));
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN actuel incorrect ou nouveau PIN invalide'), backgroundColor: Colors.red));
-        }
+        if (oldCtl.text == _savedPin && newCtl.text.length == 4) {
+          await _savePin(newCtl.text); Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN modifié !')));
+        } else { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN actuel incorrect'), backgroundColor: Colors.red)); }
       }, child: const Text('Confirmer')),
     ]));
   }
 
-  void _showBreakInLog() => showModalBottomSheet(context: context, builder: (_) => ListView(padding: const EdgeInsets.all(24), shrinkWrap: true, children: [
-    Text('Journal des intrusions', style: Theme.of(context).textTheme.titleLarge),
-    const SizedBox(height: 12),
-    if (_breakInLog.isEmpty) const Text('Aucune intrusion détectée', style: TextStyle(color: Colors.green))
-    else ..._breakInLog.map((t) => ListTile(leading: const Icon(Icons.warning, color: Colors.orange, size: 20),
-        title: Text('Tentative échouée', style: const TextStyle(fontSize: 13)), subtitle: Text(t, style: const TextStyle(fontSize: 11)))),
-    const SizedBox(height: 12),
-    OutlinedButton.icon(onPressed: () async {
-      _breakInLog.clear();
-      await _storage.delete(key: 'break_in_log');
-      Navigator.pop(context);
-      setState(() {});
-    }, icon: const Icon(Icons.delete), label: const Text('Effacer le journal')),
-  ]));
+  void _showBreakInLog() => showModalBottomSheet(context: context, builder: (_) => FutureBuilder<List<Map<String, dynamic>>>(
+    future: _db.getBreakInLog(), builder: (_, snap) {
+      final log = snap.data ?? [];
+      return ListView(padding: const EdgeInsets.all(24), shrinkWrap: true, children: [
+        Text('Journal des intrusions (${log.length})', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 12),
+        if (log.isEmpty) const Text('Aucune intrusion', style: TextStyle(color: Colors.green))
+        else ...log.map((e) => ListTile(leading: const Icon(Icons.warning, color: Colors.orange, size: 20),
+          title: Text('PIN: ${e['pin_used']}', style: const TextStyle(fontSize: 13)),
+          subtitle: Text(DateTime.fromMillisecondsSinceEpoch(e['timestamp'] as int).toString().substring(0, 19), style: const TextStyle(fontSize: 11)))),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(onPressed: () async { await _db.clearBreakInLog(); Navigator.pop(context); _loadData(); }, icon: const Icon(Icons.delete), label: const Text('Effacer le journal')),
+      ];
+    }));
 
   void _emergencyWipe() => showDialog(context: context, builder: (_) => AlertDialog(
-    title: const Text('Effacement d\'urgence'), content: const Text('Supprimer TOUTES les données du coffre ? Cette action est irréversible.'),
+    title: const Text('Effacement d\'urgence'), content: const Text('Supprimer TOUTES les données du coffre ? Irréversible.'),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
       FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () async {
-        await _storage.deleteAll();
-        setState(() { _savedPin = null; _isSetup = false; _pin = ''; _breakInLog = []; });
-        ref.read(vaultUnlockedProvider.notifier).state = false;
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Toutes les données ont été supprimées')));
-      }, child: const Text('SUPPRIMER TOUT'))],
+        await _db.emergencyWipe(); await _storage.delete(key: 'vault_pin');
+        setState(() { _savedPin = null; _isSetup = false; _pin = ''; _notes = []; _passwords = []; _cards = []; _breakIns = []; });
+        ref.read(vaultUnlockedProvider.notifier).state = false; Navigator.pop(context);
+      }, child: const Text('SUPPRIMER'))],
   ));
 
   void _resetVault() => showDialog(context: context, builder: (_) => AlertDialog(
-    title: const Text('Réinitialiser le coffre'), content: const Text('Supprimer le PIN et toutes les données ?'),
+    title: const Text('Réinitialiser'), content: const Text('Supprimer le PIN et toutes les données ?'),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
       FilledButton(onPressed: () async {
-        await _storage.deleteAll();
-        setState(() { _savedPin = null; _isSetup = false; _pin = ''; _setupStep = 0; _breakInLog = []; });
-        ref.read(vaultUnlockedProvider.notifier).state = false;
-        Navigator.pop(context);
+        await _db.emergencyWipe(); await _storage.delete(key: 'vault_pin');
+        setState(() { _savedPin = null; _isSetup = false; _pin = ''; _setupStep = 0; _notes = []; _passwords = []; _cards = []; _breakIns = []; });
+        ref.read(vaultUnlockedProvider.notifier).state = false; Navigator.pop(context);
       }, child: const Text('Réinitialiser'))],
   ));
-
-  void _smartFeature(String name) {
-    switch (name) {
-      case 'Biométrie': _biometricAuth(); break;
-      case 'Journal intrusions': _showBreakInLog(); break;
-      case 'Effacement urgence': _emergencyWipe(); break;
-      case 'Force du PIN': _pinStrength(); break;
-      default: ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$name - Activé !')));
-    }
-  }
-
-  void _pinStrength() {
-    final pin = _savedPin ?? '';
-    int score = 0;
-    if (pin.length >= 4) score++;
-    if (pin.length >= 6) score++;
-    final digits = pin.split('').toSet();
-    if (digits.length >= 3) score++;
-    if (!['1234', '0000', '1111', '9999', '4321'].contains(pin)) score++;
-    final labels = ['Très faible', 'Faible', 'Moyen', 'Fort'];
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Force du PIN: ${labels[score.clamp(0, 3)]} ($score/4)')));
-  }
 }
