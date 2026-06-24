@@ -5,7 +5,6 @@ import 'package:path/path.dart' as p;
 import 'package:ffmpeg_kit_flutter_audio/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_audio/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_audio/return_code.dart';
-import 'package:ffmpeg_kit_flutter_audio/media_information_session.dart';
 
 /// Media processing utilities using FFmpeg Kit Audio.
 /// Supports audio cutting, conversion, metadata editing, and video→audio extraction.
@@ -22,30 +21,78 @@ class MediaProcessor {
     }
   }
 
-  /// Get media information for a file
-  static Future<Map<String, dynamic>?> getMediaInfo(String filePath) async {
+  /// Get the last session's output logs (for reading metadata)
+  static Future<String> _getLastOutput() async {
     try {
-      final session = await FFmpegKitConfig.getMediaInformation(filePath);
-      final info = session.getMediaInformation();
-      if (info == null) return null;
-      final properties = info.getAllProperties();
-      return Map<String, dynamic>.from(properties as Map? ?? {});
+      final session = await FFmpegKit.getLastCompletedSession();
+      if (session == null) return '';
+      final output = await session.getOutput();
+      return output ?? '';
     } catch (e) {
-      debugPrint('FFmpeg info error: $e');
-      return null;
+      return '';
     }
   }
 
-  /// Get audio duration in seconds
+  /// Get media duration in seconds by running ffprobe-like command
   static Future<double> getDuration(String filePath) async {
     try {
-      final info = await getMediaInfo(filePath);
-      if (info == null) return 0;
-      final format = info['format'] as Map?;
-      final durStr = format?['duration'] as String? ?? info['duration'] as String? ?? '0';
-      return double.tryParse(durStr) ?? 0;
+      // Use FFprobe via FFmpegKitConfig
+      final cmd = '-i "$filePath" -f null -';
+      await FFmpegKit.execute(cmd);
+      final output = await _getLastOutput();
+      // Parse duration from output like "Duration: 00:03:45.12"
+      final durMatch = RegExp(r'Duration:\s*(\d+):(\d+):(\d+\.?\d*)').firstMatch(output);
+      if (durMatch != null) {
+        final h = double.tryParse(durMatch.group(1) ?? '0') ?? 0;
+        final m = double.tryParse(durMatch.group(2) ?? '0') ?? 0;
+        final s = double.tryParse(durMatch.group(3) ?? '0') ?? 0;
+        return h * 3600 + m * 60 + s;
+      }
+      return 0;
     } catch (e) {
       return 0;
+    }
+  }
+
+  /// Get media information as a map using ffprobe output parsing
+  static Future<Map<String, String>> getMediaInfo(String filePath) async {
+    try {
+      final cmd = '-i "$filePath" -f null -';
+      await FFmpegKit.execute(cmd);
+      final output = await _getLastOutput();
+      final info = <String, String>{};
+
+      // Parse duration
+      final durMatch = RegExp(r'Duration:\s*(\d+:\d+:\d+\.?\d*)').firstMatch(output);
+      if (durMatch != null) info['duration'] = durMatch.group(1)!;
+
+      // Parse bitrate
+      final brMatch = RegExp(r'bitrate:\s*(\d+\s*kb/s)').firstMatch(output);
+      if (brMatch != null) info['bitrate'] = brMatch.group(1)!;
+
+      // Parse title
+      final titleMatch = RegExp(r'title\s*:\s*(.+)').firstMatch(output);
+      if (titleMatch != null) info['title'] = titleMatch.group(1)!.trim();
+
+      // Parse artist
+      final artistMatch = RegExp(r'artist\s*:\s*(.+)').firstMatch(output);
+      if (artistMatch != null) info['artist'] = artistMatch.group(1)!.trim();
+
+      // Parse album
+      final albumMatch = RegExp(r'album\s*:\s*(.+)').firstMatch(output);
+      if (albumMatch != null) info['album'] = albumMatch.group(1)!.trim();
+
+      // Parse genre
+      final genreMatch = RegExp(r'genre\s*:\s*(.+)').firstMatch(output);
+      if (genreMatch != null) info['genre'] = genreMatch.group(1)!.trim();
+
+      // Parse date/year
+      final dateMatch = RegExp(r'date\s*:\s*(.+)').firstMatch(output);
+      if (dateMatch != null) info['date'] = dateMatch.group(1)!.trim();
+
+      return info;
+    } catch (e) {
+      return {};
     }
   }
 
@@ -169,21 +216,15 @@ class MediaProcessor {
   /// Read metadata tags from an audio file
   static Future<AudioMetadata> readMetadata(String filePath) async {
     final info = await getMediaInfo(filePath);
-    if (info == null) return AudioMetadata(filePath: filePath);
-
-    final format = info['format'] as Map? ?? {};
-    final tags = format['tags'] as Map? ?? info['tags'] as Map? ?? {};
     return AudioMetadata(
       filePath: filePath,
-      title: _tag(tags, ['title', 'TITLE', 'Title']),
-      artist: _tag(tags, ['artist', 'ARTIST', 'Artist', 'album_artist']),
-      album: _tag(tags, ['album', 'ALBUM', 'Album']),
-      year: _tag(tags, ['date', 'DATE', 'year', 'YEAR', 'Year']),
-      genre: _tag(tags, ['genre', 'GENRE', 'Genre']),
-      track: _tag(tags, ['track', 'TRACK', 'Track']),
-      comment: _tag(tags, ['comment', 'COMMENT', 'Comment']),
-      duration: format['duration'] as String? ?? '',
-      bitrate: format['bit_rate'] as String? ?? '',
+      title: info['title'] ?? '',
+      artist: info['artist'] ?? '',
+      album: info['album'] ?? '',
+      year: info['date'] ?? '',
+      genre: info['genre'] ?? '',
+      duration: info['duration'] ?? '',
+      bitrate: info['bitrate'] ?? '',
     );
   }
 
@@ -201,7 +242,6 @@ class MediaProcessor {
     if (metadata.album.isNotEmpty) args.write(' -metadata album="${metadata.album}"');
     if (metadata.year.isNotEmpty) args.write(' -metadata date="${metadata.year}"');
     if (metadata.genre.isNotEmpty) args.write(' -metadata genre="${metadata.genre}"');
-    if (metadata.track.isNotEmpty) args.write(' -metadata track="${metadata.track}"');
     if (metadata.comment.isNotEmpty) args.write(' -metadata comment="${metadata.comment}"');
 
     args.write(' -c copy "$output"');
@@ -273,14 +313,6 @@ class MediaProcessor {
   }
 
   // ─── Helpers ───
-
-  static String _tag(Map tags, List<String> keys) {
-    for (final k in keys) {
-      final v = tags[k];
-      if (v != null && v.toString().isNotEmpty) return v.toString();
-    }
-    return '';
-  }
 
   static Future<String> _getOutputPath(String inputPath, String suffix, {String? ext}) async {
     final dir = await getExternalStorageDirectory();
