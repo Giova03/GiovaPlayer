@@ -5,8 +5,6 @@ import 'package:path/path.dart' as p;
 import 'package:ffmpeg_kit_flutter_audio/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_audio/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_audio/return_code.dart';
-import 'package:ffmpeg_kit_flutter_audio/media_information_session.dart';
-import 'package:ffmpeg_kit_flutter_audio/statistics.dart';
 
 /// Media processing utilities using FFmpeg Kit Audio.
 /// Supports audio cutting, conversion, metadata editing, and video→audio extraction.
@@ -23,35 +21,12 @@ class MediaProcessor {
     }
   }
 
-  /// Execute with progress callback
-  static Future<bool> executeWithProgress(
-    String command, {
-    void Function(int time, int duration)? onProgress,
-  }) async {
-    try {
-      if (onProgress != null) {
-        FFmpegKitConfig.enableStatisticsCallback((Statistics stats) {
-          onProgress(stats.getTime(), stats.getBitrate());
-        });
-      }
-      final session = await FFmpegKit.execute(command);
-      final returnCode = await session.getReturnCode();
-      FFmpegKitConfig.enableStatisticsCallback(null);
-      return ReturnCode.isSuccess(returnCode);
-    } catch (e) {
-      FFmpegKitConfig.enableStatisticsCallback(null);
-      debugPrint('FFmpeg error: $e');
-      return false;
-    }
-  }
-
-  /// Get media information for a file
+  /// Get media information for a file using ffprobe
   static Future<Map<String, dynamic>?> getMediaInfo(String filePath) async {
     try {
       final session = await FFmpegKit.getMediaInformation(filePath);
       final info = session.getMediaInformation();
       if (info == null) return null;
-
       final properties = info.getAllProperties();
       return Map<String, dynamic>.from(properties as Map? ?? {});
     } catch (e) {
@@ -62,10 +37,16 @@ class MediaProcessor {
 
   /// Get audio duration in seconds
   static Future<double> getDuration(String filePath) async {
-    final info = await getMediaInfo(filePath);
-    if (info == null) return 0;
-    final durationStr = info['duration'] as String? ?? '0';
-    return double.tryParse(durationStr) ?? 0;
+    try {
+      final info = await getMediaInfo(filePath);
+      if (info == null) return 0;
+      // Try format.duration first, then duration
+      final format = info['format'] as Map?;
+      final durStr = format?['duration'] as String? ?? info['duration'] as String? ?? '0';
+      return double.tryParse(durStr) ?? 0;
+    } catch (e) {
+      return 0;
+    }
   }
 
   /// Cut audio from [start] to [end] seconds
@@ -190,7 +171,8 @@ class MediaProcessor {
     final info = await getMediaInfo(filePath);
     if (info == null) return AudioMetadata(filePath: filePath);
 
-    final tags = info['format']?['tags'] as Map? ?? info['tags'] as Map? ?? {};
+    final format = info['format'] as Map? ?? {};
+    final tags = format['tags'] as Map? ?? info['tags'] as Map? ?? {};
     return AudioMetadata(
       filePath: filePath,
       title: _tag(tags, ['title', 'TITLE', 'Title']),
@@ -200,8 +182,8 @@ class MediaProcessor {
       genre: _tag(tags, ['genre', 'GENRE', 'Genre']),
       track: _tag(tags, ['track', 'TRACK', 'Track']),
       comment: _tag(tags, ['comment', 'COMMENT', 'Comment']),
-      duration: info['duration'] as String? ?? '',
-      bitrate: info['bit_rate'] as String? ?? '',
+      duration: format['duration'] as String? ?? '',
+      bitrate: format['bit_rate'] as String? ?? '',
     );
   }
 
