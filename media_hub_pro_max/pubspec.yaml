@@ -28,8 +28,8 @@ dependencies:
   local_auth: ^2.3.0
   crypto: ^3.0.3
   path: ^1.9.0
-  # NEW v6.0 dependencies
-  ffmpeg_kit_flutter_audio: ^6.0.3
+  # NEW v6.0 dependencies - using min variant which works on GitHub Actions
+  ffmpeg_kit_flutter_min: ^6.0.3
   encrypt: ^5.0.3
   dio: ^5.4.0
 
