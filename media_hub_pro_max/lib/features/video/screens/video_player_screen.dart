@@ -46,7 +46,6 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
     try {
       await _player.open(Media(path));
       await WakelockPlus.enable();
-      await _player.setPlaybackMode(PlaybackMode.passthrough);
       setState(() => _isInit = true);
       _player.play();
     } catch (e) {

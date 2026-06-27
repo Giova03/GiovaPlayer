@@ -41,14 +41,14 @@ class GiovaAudioHandler extends BaseAudioHandler with SeekHandler {
   void _listenToSequenceState() {
     _player.sequenceStateStream.listen((seqState) {
       if (seqState == null) return;
-      final items = seqState.sequence.map((source) => MediaItem(
-        id: source.tag?.id ?? source.uri.toString(),
-        title: source.tag?.title ?? p.basenameWithoutExtension(source.uri.path),
-        artist: source.tag?.artist ?? 'Artiste inconnu',
-        album: source.tag?.album ?? '',
-        duration: source.duration,
-        artUri: source.tag?.artUri,
-      )).toList();
+      final items = seqState.sequence.map((source) {
+        final tag = source.tag as MediaItem?;
+        return tag ?? MediaItem(
+          id: source.hashCode.toString(),
+          title: 'Titre inconnu',
+          artist: 'Artiste inconnu',
+        );
+      }).toList();
       queue.add(items);
     });
   }

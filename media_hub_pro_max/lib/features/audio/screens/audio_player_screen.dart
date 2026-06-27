@@ -373,7 +373,7 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
   }
 
   void _addToPlaylistDialog(MediaFile file) {
-    showDialog(context: context, builder: (_) => FutureBuilder<List<Map<String, dynamic>>>>(
+    showDialog(context: context, builder: (_) => FutureBuilder<List<Map<String, dynamic> > >>(
       future: _db.getPlaylists(),
       builder: (_, snap) {
         final playlists = snap.data ?? [];
