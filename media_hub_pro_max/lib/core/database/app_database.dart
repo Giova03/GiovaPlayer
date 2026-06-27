@@ -1,6 +1,5 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
-import 'dart:convert';
 
 class AppDatabase {
   static Database? _db;
@@ -18,7 +17,7 @@ class AppDatabase {
     final dbPath = await getDatabasesPath();
     return openDatabase(
       p.join(dbPath, 'giova_player.db'),
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE vault_notes (
           id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, created_at INTEGER, updated_at INTEGER
@@ -42,7 +41,7 @@ class AppDatabase {
           id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, created_at INTEGER
         )''');
         await db.execute('''CREATE TABLE playlist_items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, playlist_id INTEGER, file_path TEXT, position INTEGER,
+          id INTEGER PRIMARY KEY AUTOINCREMENT, playlist_id INTEGER, file_path TEXT, display_name TEXT, position INTEGER,
           FOREIGN KEY(playlist_id) REFERENCES playlists(id)
         )''');
         await db.execute('''CREATE TABLE download_history (
@@ -51,6 +50,20 @@ class AppDatabase {
         await db.execute('''CREATE TABLE break_in_log (
           id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, pin_used TEXT
         )''');
+        await db.execute('''CREATE TABLE recently_played (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, file_path TEXT, display_name TEXT, played_at INTEGER
+        )''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('''CREATE TABLE IF NOT EXISTS recently_played (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, file_path TEXT, display_name TEXT, played_at INTEGER
+          )''');
+          // Add display_name column to playlist_items if not exists
+          try {
+            await db.execute('ALTER TABLE playlist_items ADD COLUMN display_name TEXT');
+          } catch (_) {}
+        }
       },
     );
   }
@@ -60,18 +73,15 @@ class AppDatabase {
     final db = await database;
     return db.query('vault_notes', orderBy: 'updated_at DESC');
   }
-
   Future<int> insertVaultNote(String title, String content) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     return db.insert('vault_notes', {'title': title, 'content': content, 'created_at': now, 'updated_at': now});
   }
-
   Future<int> updateVaultNote(int id, String title, String content) async {
     final db = await database;
     return db.update('vault_notes', {'title': title, 'content': content, 'updated_at': DateTime.now().millisecondsSinceEpoch}, where: 'id = ?', whereArgs: [id]);
   }
-
   Future<int> deleteVaultNote(int id) async {
     final db = await database;
     return db.delete('vault_notes', where: 'id = ?', whereArgs: [id]);
@@ -82,7 +92,6 @@ class AppDatabase {
     final db = await database;
     return db.query('vault_passwords', orderBy: 'created_at DESC');
   }
-
   Future<int> insertVaultPassword(String service, String username, String password, {String? url, String? notes}) async {
     final db = await database;
     return db.insert('vault_passwords', {
@@ -90,15 +99,6 @@ class AppDatabase {
       'url': url ?? '', 'notes': notes ?? '', 'created_at': DateTime.now().millisecondsSinceEpoch,
     });
   }
-
-  Future<int> updateVaultPassword(int id, String service, String username, String password, {String? url, String? notes}) async {
-    final db = await database;
-    return db.update('vault_passwords', {
-      'service': service, 'username': username, 'password': password,
-      'url': url ?? '', 'notes': notes ?? '',
-    }, where: 'id = ?', whereArgs: [id]);
-  }
-
   Future<int> deleteVaultPassword(int id) async {
     final db = await database;
     return db.delete('vault_passwords', where: 'id = ?', whereArgs: [id]);
@@ -109,7 +109,6 @@ class AppDatabase {
     final db = await database;
     return db.query('vault_cards', orderBy: 'created_at DESC');
   }
-
   Future<int> insertVaultCard(String holder, String numberEnc, String expiry, String cvvEnc, String cardType, {String? notes}) async {
     final db = await database;
     return db.insert('vault_cards', {
@@ -117,7 +116,6 @@ class AppDatabase {
       'cvv_encrypted': cvvEnc, 'card_type': cardType, 'notes': notes ?? '', 'created_at': DateTime.now().millisecondsSinceEpoch,
     });
   }
-
   Future<int> deleteVaultCard(int id) async {
     final db = await database;
     return db.delete('vault_cards', where: 'id = ?', whereArgs: [id]);
@@ -128,14 +126,10 @@ class AppDatabase {
     final db = await database;
     return db.query('vault_photos', orderBy: 'created_at DESC');
   }
-
   Future<int> insertVaultPhoto(String originalPath, String storedPath) async {
     final db = await database;
-    return db.insert('vault_photos', {
-      'original_path': originalPath, 'stored_path': storedPath, 'created_at': DateTime.now().millisecondsSinceEpoch,
-    });
+    return db.insert('vault_photos', {'original_path': originalPath, 'stored_path': storedPath, 'created_at': DateTime.now().millisecondsSinceEpoch});
   }
-
   Future<int> deleteVaultPhoto(int id) async {
     final db = await database;
     return db.delete('vault_photos', where: 'id = ?', whereArgs: [id]);
@@ -146,7 +140,6 @@ class AppDatabase {
     final db = await database;
     return db.query('vault_files', orderBy: 'created_at DESC');
   }
-
   Future<int> insertVaultFile(String originalPath, String storedPath, String fileName, int fileSize) async {
     final db = await database;
     return db.insert('vault_files', {
@@ -154,7 +147,6 @@ class AppDatabase {
       'file_name': fileName, 'file_size': fileSize, 'created_at': DateTime.now().millisecondsSinceEpoch,
     });
   }
-
   Future<int> deleteVaultFile(int id) async {
     final db = await database;
     return db.delete('vault_files', where: 'id = ?', whereArgs: [id]);
@@ -165,13 +157,11 @@ class AppDatabase {
     final db = await database;
     return db.query('favorites', orderBy: 'created_at DESC');
   }
-
   Future<bool> isFavorite(String filePath) async {
     final db = await database;
     final result = await db.query('favorites', where: 'file_path = ?', whereArgs: [filePath]);
     return result.isNotEmpty;
   }
-
   Future<void> toggleFavorite(String filePath, String fileType, String displayName) async {
     final db = await database;
     if (await isFavorite(filePath)) {
@@ -184,17 +174,67 @@ class AppDatabase {
     }
   }
 
+  // ─── PLAYLISTS ───
+  Future<List<Map<String, dynamic>>> getPlaylists() async {
+    final db = await database;
+    return db.query('playlists', orderBy: 'created_at DESC');
+  }
+  Future<int> createPlaylist(String name) async {
+    final db = await database;
+    return db.insert('playlists', {'name': name, 'created_at': DateTime.now().millisecondsSinceEpoch});
+  }
+  Future<int> renamePlaylist(int id, String name) async {
+    final db = await database;
+    return db.update('playlists', {'name': name}, where: 'id = ?', whereArgs: [id]);
+  }
+  Future<int> deletePlaylist(int id) async {
+    final db = await database;
+    await db.delete('playlist_items', where: 'playlist_id = ?', whereArgs: [id]);
+    return db.delete('playlists', where: 'id = ?', whereArgs: [id]);
+  }
+  Future<List<Map<String, dynamic>>> getPlaylistItems(int playlistId) async {
+    final db = await database;
+    return db.query('playlist_items', where: 'playlist_id = ?', whereArgs: [playlistId], orderBy: 'position ASC');
+  }
+  Future<int> addToPlaylist(int playlistId, String filePath, String displayName, int position) async {
+    final db = await database;
+    return db.insert('playlist_items', {
+      'playlist_id': playlistId, 'file_path': filePath, 'display_name': displayName, 'position': position,
+    });
+  }
+  Future<int> removeFromPlaylist(int id) async {
+    final db = await database;
+    return db.delete('playlist_items', where: 'id = ?', whereArgs: [id]);
+  }
+  Future<int> getPlaylistCount(int playlistId) async {
+    final db = await database;
+    final result = await db.query('playlist_items', where: 'playlist_id = ?', whereArgs: [playlistId]);
+    return result.length;
+  }
+
+  // ─── RECENTLY PLAYED ───
+  Future<List<Map<String, dynamic>>> getRecentlyPlayed({int limit = 30}) async {
+    final db = await database;
+    return db.query('recently_played', orderBy: 'played_at DESC', limit: limit);
+  }
+  Future<void> addRecentlyPlayed(String filePath, String displayName) async {
+    final db = await database;
+    // Remove existing entry for this file
+    await db.delete('recently_played', where: 'file_path = ?', whereArgs: [filePath]);
+    await db.insert('recently_played', {
+      'file_path': filePath, 'display_name': displayName, 'played_at': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
   // ─── BREAK-IN LOG ───
   Future<List<Map<String, dynamic>>> getBreakInLog() async {
     final db = await database;
     return db.query('break_in_log', orderBy: 'timestamp DESC');
   }
-
   Future<int> logBreakIn(String pinUsed) async {
     final db = await database;
     return db.insert('break_in_log', {'timestamp': DateTime.now().millisecondsSinceEpoch, 'pin_used': pinUsed});
   }
-
   Future<int> clearBreakInLog() async {
     final db = await database;
     return db.delete('break_in_log');
