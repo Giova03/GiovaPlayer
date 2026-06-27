@@ -373,21 +373,7 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
   }
 
   void _addToPlaylistDialog(MediaFile file) {
-    showDialog(context: context, builder: (_) => FutureBuilder<List<Map<String, dynamic> > >>(
-      future: _db.getPlaylists(),
-      builder: (_, snap) {
-        final playlists = snap.data ?? [];
-        return AlertDialog(title: Text('Ajouter "${file.displayName}"'),
-          content: playlists.isEmpty ? const Text('Créez d\'abord une playlist')
-            : SizedBox(width: double.maxFinite, child: ListView.builder(shrinkWrap: true, itemCount: playlists.length, itemBuilder: (_, i) {
-              final pl = playlists[i];
-              return ListTile(leading: const Icon(Icons.queue_music), title: Text(pl['name'] as String),
-                onTap: () async { await _db.addToPlaylist(pl['id'] as int, file.path, file.displayName, 0); Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ajouté à ${pl['name']}'))); });
-            })),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler'))],
-        );
-      },
-    ));
+    showDialog(context: context, builder: (_) => _PlaylistPickerDialog(file: file, db: _db));
   }
 
   void _showFileInfo(MediaFile file) => showModalBottomSheet(context: context, builder: (_) => ListView(padding: const EdgeInsets.all(24), shrinkWrap: true, children: [
@@ -458,4 +444,31 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
   }
 
   String _fmt(Duration d) { final m = d.inMinutes.remainder(60); final s = d.inSeconds.remainder(60); return '$m:${s.toString().padLeft(2, '0')}'; }
+}
+
+class _PlaylistPickerDialog extends StatelessWidget {
+  final MediaFile file;
+  final AppDatabase db;
+  const _PlaylistPickerDialog({required this.file, required this.db});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Ajouter "${file.displayName}"'),
+      content: FutureBuilder(
+        future: db.getPlaylists(),
+        builder: (_, AsyncSnapshot snap) {
+          final playlists = snap.data ?? [];
+          if (playlists.isEmpty) return const Text('Créez d\'abord une playlist');
+          return SizedBox(width: double.maxFinite, child: ListView.builder(
+            shrinkWrap: true, itemCount: playlists.length, itemBuilder: (_, i) {
+            final pl = playlists[i];
+            return ListTile(leading: const Icon(Icons.queue_music), title: Text(pl['name'] as String),
+              onTap: () async { await db.addToPlaylist(pl['id'] as int, file.path, file.displayName, 0); Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ajouté à ${pl['name']}'))); });
+          }));
+        },
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler'))],
+    );
+  }
 }
