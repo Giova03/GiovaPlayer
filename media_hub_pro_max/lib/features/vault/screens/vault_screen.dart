@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -38,19 +39,30 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
   void initState() { super.initState(); _loadPin(); }
 
   Future<void> _loadPin() async {
-    final pin = await _storage.read(key: 'vault_pin');
-    setState(() { _savedPin = pin; _isSetup = pin != null; });
-    if (pin != null) _loadData();
+    try {
+      final pin = await _storage.read(key: 'vault_pin');
+      if (!mounted) return;
+      setState(() { _savedPin = pin; _isSetup = pin != null; });
+      if (pin != null) _loadData();
+    } catch (e) {
+      debugPrint('_loadPin error: $e');
+    }
   }
 
   Future<void> _loadData() async {
-    final notes = await _db.getVaultNotes();
-    final pws = await _db.getVaultPasswords();
-    final cards = await _db.getVaultCards();
-    final log = await _db.getBreakInLog();
-    final photos = await _db.getVaultPhotos();
-    final files = await _db.getVaultFiles();
-    setState(() { _notes = notes; _passwords = pws; _cards = cards; _breakIns = log; _photos = photos; _files = files; });
+    try {
+      final results = await Future.wait([
+        _db.getVaultNotes(), _db.getVaultPasswords(), _db.getVaultCards(),
+        _db.getBreakInLog(), _db.getVaultPhotos(), _db.getVaultFiles(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _notes = results[0]; _passwords = results[1]; _cards = results[2];
+        _breakIns = results[3]; _photos = results[4]; _files = results[5];
+      });
+    } catch (e) {
+      debugPrint('_loadData error: $e');
+    }
   }
 
   Future<void> _savePin(String pin) async {
@@ -135,9 +147,12 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
       if (_pin == _savedPin) { ref.read(vaultUnlockedProvider.notifier).state = true; setState(() { _failedAttempts = 0; }); await _loadData(); }
       else if (_pin == '9999') { ref.read(vaultUnlockedProvider.notifier).state = true; ref.read(vaultDecoyProvider.notifier).state = true; }
       else {
-        await _db.logBreakIn(_pin); setState(() { _pin = ''; _failedAttempts++; });
+        await _db.logBreakIn(_pin);
+        if (!mounted) return;
+        setState(() { _pin = ''; _failedAttempts++; });
         // Lockout after 5 failures
         if (_failedAttempts >= 5) {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Trop de tentatives. Attendez 30s.'), backgroundColor: Colors.red));
           Future.delayed(const Duration(seconds: 30), () { if (mounted) setState(() => _failedAttempts = 0); });
         } else {
@@ -174,7 +189,7 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
         Icon(Icons.shield, color: cs.onTertiaryContainer), const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Coffre-fort sécurisé', style: TextStyle(color: cs.onTertiaryContainer, fontWeight: FontWeight.w700)),
-          Text('${_notes.length} notes • ${_passwords.length} mdp • ${_cards.length} cartes • ${_photos.length} photos • ${_files.length} fichiers', style: TextStyle(color: cs.onTertiaryContainer.withOpacity(0.7), fontSize: 12)),
+          Text('${_notes.length} notes • ${_passwords.length} mdp • ${_cards.length} cartes • ${_photos.length} photos • ${_files.length} fichiers', style: TextStyle(color: cs.onTertiaryContainer.withValues(alpha: 0.7), fontSize: 12)),
         ])),
       ]))),
       if (_failedAttempts > 0) Card(color: cs.errorContainer, child: Padding(padding: const EdgeInsets.all(8),
@@ -318,6 +333,7 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
             debugPrint('Encryption error: $e');
           }
         }
+        if (!mounted) return;
         setState(() => _encrypting = false);
         await _loadData();
         if (mounted) {
@@ -386,6 +402,7 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
             debugPrint('Encryption error: $e');
           }
         }
+        if (!mounted) return;
         setState(() => _encrypting = false);
         await _loadData();
         if (mounted) {
@@ -404,8 +421,22 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
       }
       final fileName = file['file_name'] as String? ?? 'file';
       final tempPath = await VaultCrypto.decryptToTemp(storedPath, fileName);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fichier déchiffré: $tempPath'), duration: const Duration(seconds: 5)));
+      if (!mounted) return;
+
+      // Detect file type and open appropriate viewer
+      final ext = fileName.toLowerCase().split('.').last;
+      if (['jpg','jpeg','png','gif','bmp','webp','heic','heif'].contains(ext)) {
+        // Show image in a dialog
+        showDialog(context: context, builder: (_) => Dialog(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ConstrainedBox(constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+            child: InteractiveViewer(child: Image.file(File(tempPath), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 64)))),
+          TextButton(onPressed: () { VaultCrypto.deleteTempFile(tempPath); Navigator.pop(context); }, child: const Text('Fermer')),
+        ])));
+      } else if (['mp3','flac','wav','aac','ogg','m4a'].contains(ext)) {
+        // Show audio player dialog
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Audio déchiffré: $fileName'), action: SnackBarAction(label: 'OK', onPressed: () => VaultCrypto.deleteTempFile(tempPath))));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fichier déchiffré: $fileName'), action: SnackBarAction(label: 'OK', onPressed: () => VaultCrypto.deleteTempFile(tempPath))));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
@@ -421,8 +452,9 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
       final fileName = file['file_name'] as String? ?? 'restored_file';
       final decrypted = await VaultCrypto.decryptFile(storedPath);
 
-      // Save to Download directory
+      // Save to Download directory (create if needed)
       final downloadDir = Directory('/storage/emulated/0/Download');
+      if (!await downloadDir.exists()) await downloadDir.create(recursive: true);
       final restorePath = '${downloadDir.path}/$fileName';
       await File(restorePath).writeAsBytes(decrypted);
 
@@ -493,14 +525,19 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
 
   String _generatePassword() {
     final chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#\$%^&*';
-    return List.generate(16, (_) => chars[DateTime.now().microsecond % chars.length]).join();
+    final rng = Random.secure();
+    return List.generate(16, (_) => chars[rng.nextInt(chars.length)]).join();
   }
 
   void _applyScreenshotProtection(bool enabled) {
-    // Note: FLAG_SECURE requires platform channel — for now just log
-    // Real implementation would call a MethodChannel to set FLAG_SECURE
-    if (enabled) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Protection anti-screenshot activée'), duration: Duration(seconds: 1)));
+    try {
+      const MethodChannel('vault.secure').invokeMethod('setSecure', {'enabled': enabled});
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(enabled ? 'Protection anti-screenshot activée' : 'Protection anti-screenshot désactivée'),
+        duration: const Duration(seconds: 1),
+      ));
+    } catch (e) {
+      debugPrint('FLAG_SECURE error: $e');
     }
   }
 
@@ -600,10 +637,13 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
     title: const Text('Effacement d\'urgence'), content: const Text('Supprimer TOUTES les données du coffre ? Irréversible.'),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
       FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () async {
-        await VaultCrypto.wipeAll();
-        await _db.emergencyWipe(); await _storage.delete(key: 'vault_pin');
-        setState(() { _savedPin = null; _isSetup = false; _pin = ''; _notes = []; _passwords = []; _cards = []; _breakIns = []; _photos = []; _files = []; });
-        ref.read(vaultUnlockedProvider.notifier).state = false; Navigator.pop(context);
+        try {
+          await VaultCrypto.wipeAll();
+          await _db.emergencyWipe(); await _storage.delete(key: 'vault_pin');
+          if (!mounted) return;
+          setState(() { _savedPin = null; _isSetup = false; _pin = ''; _notes = []; _passwords = []; _cards = []; _breakIns = []; _photos = []; _files = []; });
+          ref.read(vaultUnlockedProvider.notifier).state = false; Navigator.pop(context);
+        } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red)); }
       }, child: const Text('SUPPRIMER'))],
   ));
 
@@ -611,10 +651,13 @@ class _VaultScreenState extends ConsumerState<VaultScreen> {
     title: const Text('Réinitialiser'), content: const Text('Supprimer le PIN et toutes les données ?'),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
       FilledButton(onPressed: () async {
-        await VaultCrypto.wipeAll();
-        await _db.emergencyWipe(); await _storage.delete(key: 'vault_pin');
-        setState(() { _savedPin = null; _isSetup = false; _pin = ''; _setupStep = 0; _notes = []; _passwords = []; _cards = []; _breakIns = []; _photos = []; _files = []; });
-        ref.read(vaultUnlockedProvider.notifier).state = false; Navigator.pop(context);
+        try {
+          await VaultCrypto.wipeAll();
+          await _db.emergencyWipe(); await _storage.delete(key: 'vault_pin');
+          if (!mounted) return;
+          setState(() { _savedPin = null; _isSetup = false; _pin = ''; _setupStep = 0; _notes = []; _passwords = []; _cards = []; _breakIns = []; _photos = []; _files = []; });
+          ref.read(vaultUnlockedProvider.notifier).state = false; Navigator.pop(context);
+        } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red)); }
       }, child: const Text('Réinitialiser'))],
   ));
 
@@ -649,7 +692,7 @@ class _PhotoPickerSheetState extends State<_PhotoPickerSheet> {
           return GestureDetector(onTap: () => setState(() { if (sel) _selected.remove(i); else _selected.add(i); }),
             child: Stack(fit: StackFit.expand, children: [
               Image.file(File(widget.images[i].path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.grey[300], child: const Icon(Icons.image, color: Colors.grey))),
-              if (sel) Container(color: Colors.blue.withOpacity(0.3), child: const Center(child: Icon(Icons.check_circle, color: Colors.blue, size: 36))),
+              if (sel) Container(color: Colors.blue.withValues(alpha: 0.3), child: const Center(child: Icon(Icons.check_circle, color: Colors.blue, size: 36))),
             ]),
           );
         })),

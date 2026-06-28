@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -54,20 +55,20 @@ class VaultCrypto {
     return Uint8List.fromList(encrypter.decryptBytes(encrypted, iv: iv));
   }
 
-  /// Encrypt a string (for passwords, card numbers, etc.)
+  /// Encrypt a string (for passwords, card numbers, etc.) — uses UTF-8 encoding
   static Future<String> encryptString(String plaintext) async {
-    final bytes = Uint8List.fromList(plaintext.codeUnits);
+    final bytes = Uint8List.fromList(utf8.encode(plaintext));
     final encrypted = await encryptBytes(bytes);
     return encrypted.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
-  /// Decrypt a string
+  /// Decrypt a string — uses UTF-8 decoding
   static Future<String> decryptString(String ciphertextHex) async {
     final bytes = Uint8List.fromList(
       List.generate(ciphertextHex.length ~/ 2, (i) => int.parse(ciphertextHex.substring(i * 2, i * 2 + 2), radix: 16)),
     );
     final decrypted = await decryptBytes(bytes);
-    return String.fromCharCodes(decrypted);
+    return utf8.decode(decrypted);
   }
 
   /// Encrypt a file and save to vault directory

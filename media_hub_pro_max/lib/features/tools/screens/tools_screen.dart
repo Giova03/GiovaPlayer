@@ -273,7 +273,7 @@ class _ToolsScreenState extends ConsumerState<ToolsScreen> with TickerProviderSt
   }
 
   Widget _cc(IconData i, String t, String s1, String s2, Color c) => Card(margin: const EdgeInsets.only(bottom: 6), child: ListTile(
-    leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: c.withOpacity(0.15), borderRadius: BorderRadius.circular(10)), child: Icon(i, color: c, size: 20)),
+    leading: Container(width: 36, height: 36, decoration: BoxDecoration(color: c.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)), child: Icon(i, color: c, size: 20)),
     title: Text(t, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)), subtitle: Text(s1, style: const TextStyle(fontSize: 11)),
     trailing: Text(s2, style: const TextStyle(fontSize: 11)),
   ));
@@ -370,7 +370,7 @@ class _ToolsScreenState extends ConsumerState<ToolsScreen> with TickerProviderSt
       ] else if (_metaSource == null && !_metaLoading) ...[
         const SizedBox(height: 24),
         Center(child: Column(children: [
-          Icon(Icons.tag, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5)),
+          Icon(Icons.tag, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
           const SizedBox(height: 12),
           const Text('Sélectionnez un fichier audio pour voir ses métadonnées'),
         ])),

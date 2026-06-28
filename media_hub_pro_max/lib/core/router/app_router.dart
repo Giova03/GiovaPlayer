@@ -57,9 +57,9 @@ class _Home extends ConsumerWidget {
         Row(children: [Icon(Icons.auto_awesome, color: cs.onPrimaryContainer), const SizedBox(width: 12),
           Expanded(child: Text('GiovaPlayer v7.0', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: cs.onPrimaryContainer)))]),
         const SizedBox(height: 8),
-        Text('Audio arrière-plan • Vidéo multi-formats • Playlists • Coffre AES-256 • 100% offline', style: TextStyle(color: cs.onPrimaryContainer.withOpacity(0.8), fontSize: 13)),
+        Text('Audio arrière-plan • Vidéo multi-formats • Playlists • Coffre AES-256 • 100% offline', style: TextStyle(color: cs.onPrimaryContainer.withValues(alpha: 0.8), fontSize: 13)),
         const SizedBox(height: 4),
-        Text('Contact: giobamos03@gmail.com | WhatsApp: +22670698070', style: TextStyle(color: cs.onPrimaryContainer.withOpacity(0.6), fontSize: 11)),
+        Text('Contact: giobamos03@gmail.com | WhatsApp: +22670698070', style: TextStyle(color: cs.onPrimaryContainer.withValues(alpha: 0.6), fontSize: 11)),
       ]))),
       const SizedBox(height: 24), Text('Modules', style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 12),
       GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.5, children: [

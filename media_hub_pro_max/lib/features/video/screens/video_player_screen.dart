@@ -22,6 +22,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
   bool _fullscreen = false;
   String _search = '';
   double _volume = 1.0;
+  int _initGen = 0; // Generation token to prevent race conditions
 
   @override
   void dispose() {
@@ -35,14 +36,18 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
   }
 
   Future<void> _init(String path) async {
+    final gen = ++_initGen;
     _controller?.dispose();
     _controller = VideoPlayerController.file(File(path));
     try {
       await _controller!.initialize();
+      if (gen != _initGen) return; // stale call
       await WakelockPlus.enable();
+      if (gen != _initGen) return;
       setState(() => _isInit = true);
       _controller!.play();
     } catch (e) {
+      if (gen != _initGen) return;
       setState(() => _isInit = false);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
     }

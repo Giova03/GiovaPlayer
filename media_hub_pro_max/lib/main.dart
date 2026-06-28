@@ -7,22 +7,16 @@ import 'package:flutter/foundation.dart';
 import 'core/router/app_router.dart';
 import 'core/providers/app_providers.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
 
-  // Eagerly initialize audio handler BEFORE runApp (fixes BUG-03)
-  final container = ProviderContainer();
-  try {
-    await container.read(audioHandlerProvider.future);
-    debugPrint('AudioService initialized successfully');
-  } catch (e, st) {
-    debugPrint('AudioService.init FAILED: $e\n$st');
-  }
-
+  // DO NOT eagerly init audio handler here — audio_service requires the
+  // Activity's FlutterEngine which only exists after runApp().
+  // The handler is lazily initialized on first use with proper error handling.
   runZonedGuarded(() {
-    runApp(UncontrolledProviderScope(container: container, child: const GiovaPlayerApp()));
+    runApp(const ProviderScope(child: GiovaPlayerApp()));
   }, (error, stack) {
     debugPrint('Erreur non gérée: $error\n$stack');
   });

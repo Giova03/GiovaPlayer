@@ -269,6 +269,7 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
               onPressed: () async {
                 try {
                   await _db.toggleFavorite(currentFile.path, 'audio', currentFile.displayName);
+                  if (!mounted) return;
                   setState(() {});
                   _showSuccess(snap.data == true ? 'Retiré des favoris' : 'Ajouté aux favoris');
                 } catch (e) {

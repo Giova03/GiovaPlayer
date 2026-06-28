@@ -39,8 +39,13 @@ class _DownloaderScreenState extends State<DownloaderScreen> with TickerProvider
   }
 
   Future<void> _scanCompleted() async {
-    final history = await _db.getDownloadHistory();
-    setState(() => _history = history);
+    try {
+      final history = await _db.getDownloadHistory();
+      if (!mounted) return;
+      setState(() => _history = history);
+    } catch (e) {
+      debugPrint('_scanCompleted error: $e');
+    }
   }
 
   @override
