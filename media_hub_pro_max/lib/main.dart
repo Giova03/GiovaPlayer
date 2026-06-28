@@ -3,16 +3,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:flutter/foundation.dart';
 import 'core/router/app_router.dart';
 import 'core/providers/app_providers.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
+
+  // Eagerly initialize audio handler BEFORE runApp (fixes BUG-03)
+  final container = ProviderContainer();
+  try {
+    await container.read(audioHandlerProvider.future);
+    debugPrint('AudioService initialized successfully');
+  } catch (e, st) {
+    debugPrint('AudioService.init FAILED: $e\n$st');
+  }
+
   runZonedGuarded(() {
-    runApp(const ProviderScope(child: GiovaPlayerApp()));
-  }, (error, stack) { debugPrint('Erreur: $error'); });
+    runApp(UncontrolledProviderScope(container: container, child: const GiovaPlayerApp()));
+  }, (error, stack) {
+    debugPrint('Erreur non gérée: $error\n$stack');
+  });
 }
 
 class GiovaPlayerApp extends ConsumerWidget {

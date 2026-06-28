@@ -33,7 +33,8 @@ class MediaFile {
   }
 }
 
-const _audioExts = {'.mp3','.flac','.wav','.aac','.ogg','.m4a','.wma','.opus','.dsf','.dff','.ape','.alac','.aiff','.amr','.mid','.midi','.m4b','.awb','.ac3','.xmf','.rtttl','.rtx','.ota','.imy'};
+// Only ExoPlayer-supported codecs (fixes BUG-06 — unsupported codecs cause silent failures)
+const _audioExts = {'.mp3','.flac','.wav','.aac','.ogg','.m4a','.alac','.aiff','.opus','.m4b'};
 const _videoExts = {'.mp4','.mkv','.avi','.mov','.wmv','.flv','.webm','.m4v','.3gp','.ts','.mts','.m2ts','.vob','.ogv','.rm','.rmvb','.asf','.divx','.f4v','.svi'};
 const _imageExts = {'.jpg','.jpeg','.png','.gif','.bmp','.webp','.tiff','.tif','.svg','.heic','.heif','.raw','.ico','.avif','.pbm','.pgm','.ppm','.tga','.psd'};
 

@@ -33,11 +33,31 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
   void dispose() { _tc.dispose(); _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _loadPlaylistData() async {
-    final pl = await _db.getPlaylists();
-    final rp = await _db.getRecentlyPlayed();
-    final fav = await _db.getFavorites();
+    try {
+      final pl = await _db.getPlaylists();
+      final rp = await _db.getRecentlyPlayed();
+      final fav = await _db.getFavorites();
+      if (mounted) {
+        setState(() { _playlists = pl; _recentlyPlayed = rp; _favorites = fav; });
+      }
+    } catch (e) {
+      debugPrint('_loadPlaylistData error: $e');
+    }
+  }
+
+  void _showError(String message) {
     if (mounted) {
-      setState(() { _playlists = pl; _recentlyPlayed = rp; _favorites = fav; });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red, duration: const Duration(seconds: 4)),
+      );
+    }
+  }
+
+  void _showSuccess(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+      );
     }
   }
 
@@ -51,9 +71,7 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
       appBar: AppBar(
         title: const Text('Audio'),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: () async {
-            await forceRescanAll(ref);
-          }),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: () async => forceRescanAll(ref)),
         ],
         bottom: TabBar(controller: _tc, tabs: const [
           Tab(text: 'Bibliothèque'), Tab(text: 'Dossiers'),
@@ -76,9 +94,16 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
   Widget _libraryTab(AsyncValue<List<MediaFile>> audioAsync, ColorScheme cs) {
     return audioAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Erreur: $e')),
+      error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.error_outline, size: 48, color: Colors.red),
+        const SizedBox(height: 8),
+        Text('Erreur: $e', textAlign: TextAlign.center),
+        const SizedBox(height: 16),
+        FilledButton(onPressed: () => forceRescanAll(ref), child: const Text('Réessayer')),
+      ]))),
       data: (files) {
         final filtered = _search.isEmpty ? files : files.where((f) => f.displayName.toLowerCase().contains(_search.toLowerCase())).toList();
+        final currentPath = ref.watch(currentAudioFileProvider)?.path;
         return Column(children: [
           Padding(padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
             child: TextField(controller: _searchCtl, decoration: InputDecoration(
@@ -96,7 +121,7 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
           Expanded(child: filtered.isEmpty ? const Center(child: Text('Aucun fichier audio'))
             : ListView.builder(itemCount: filtered.length, itemBuilder: (_, i) {
               final f = filtered[i];
-              final isCurrent = ref.watch(currentAudioFileProvider)?.path == f.path;
+              final isCurrent = currentPath == f.path;
               return ListTile(
                 selected: isCurrent,
                 leading: Container(width: 48, height: 48, decoration: BoxDecoration(
@@ -152,7 +177,11 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
     final playerAsync = ref.watch(audioHandlerProvider);
     return playerAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Erreur: $e')),
+      error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.error_outline, size: 48, color: Colors.red),
+        const SizedBox(height: 8),
+        Text('Service audio indisponible: $e', textAlign: TextAlign.center),
+      ]))),
       data: (handler) {
         final player = handler.player;
         return ListView(padding: const EdgeInsets.all(24), children: [
@@ -161,10 +190,19 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
             gradient: LinearGradient(colors: [cs.primaryContainer, cs.tertiaryContainer], begin: Alignment.topLeft, end: Alignment.bottomRight)),
             child: Center(child: Icon(Icons.music_note, size: 80, color: cs.onPrimaryContainer))),
           const SizedBox(height: 24),
-          Text(currentFile?.displayName ?? 'Aucun titre', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 4),
-          Text(currentFile?.artistDisplay ?? '', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+          // Title — listen to mediaItem stream so notification-skip updates UI
+          StreamBuilder<MediaItem?>(stream: handler.mediaItem, builder: (_, snap) {
+            final item = snap.data;
+            final title = item?.title ?? currentFile?.displayName ?? 'Aucun titre';
+            final artist = item?.artist ?? currentFile?.artistDisplay ?? '';
+            return Column(children: [
+              Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 4),
+              Text(artist, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ]);
+          }),
           const SizedBox(height: 24),
+          // Progress bar
           StreamBuilder<Duration>(stream: player.positionStream, builder: (_, snap) {
             final p = snap.data ?? Duration.zero;
             final d = player.duration ?? Duration.zero;
@@ -178,31 +216,45 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
               ]),
             ]);
           }),
+          // Controls
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            IconButton(icon: const Icon(Icons.shuffle, size: 22),
-              color: player.shuffleModeEnabled ? cs.primary : cs.onSurfaceVariant,
-              onPressed: () => player.setShuffleModeEnabled(!player.shuffleModeEnabled)),
+            StreamBuilder<bool>(stream: player.shuffleModeEnabledStream, initialData: player.shuffleModeEnabled, builder: (_, snap) {
+              return IconButton(icon: const Icon(Icons.shuffle, size: 22),
+                color: snap.data == true ? cs.primary : cs.onSurfaceVariant,
+                onPressed: () => player.setShuffleModeEnabled(!(snap.data ?? false)));
+            }),
             const SizedBox(width: 8),
-            IconButton(icon: const Icon(Icons.skip_previous, size: 32), onPressed: () => player.seekToPrevious()),
+            IconButton(icon: const Icon(Icons.skip_previous, size: 32), onPressed: () => handler.skipToPrevious()),
             const SizedBox(width: 16),
-            GestureDetector(onTap: () => player.playing ? player.pause() : player.play(),
-              child: Container(decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary), padding: const EdgeInsets.all(20),
-                child: StreamBuilder<bool>(stream: player.playingStream, initialData: player.playing, builder: (_, snap) =>
-                  Icon(snap.data == true ? Icons.pause : Icons.play_arrow, size: 40, color: cs.onPrimary)))),
+            StreamBuilder<bool>(stream: player.playingStream, initialData: player.playing, builder: (_, snap) {
+              final playing = snap.data ?? false;
+              return GestureDetector(onTap: () => playing ? handler.pause() : handler.play(),
+                child: Container(decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary), padding: const EdgeInsets.all(20),
+                  child: Icon(playing ? Icons.pause : Icons.play_arrow, size: 40, color: cs.onPrimary)));
+            }),
             const SizedBox(width: 16),
-            IconButton(icon: const Icon(Icons.skip_next, size: 32), onPressed: () => player.seekToNext()),
+            IconButton(icon: const Icon(Icons.skip_next, size: 32), onPressed: () => handler.skipToNext()),
             const SizedBox(width: 8),
-            IconButton(icon: Icon(player.loopMode == LoopMode.one ? Icons.repeat_one : Icons.repeat, size: 22),
-              color: player.loopMode != LoopMode.off ? cs.primary : cs.onSurfaceVariant,
-              onPressed: () => player.setLoopMode(switch(player.loopMode) { LoopMode.off => LoopMode.all, LoopMode.all => LoopMode.one, _ => LoopMode.off })),
+            StreamBuilder<LoopMode>(stream: player.loopModeStream, initialData: player.loopMode, builder: (_, snap) {
+              final mode = snap.data ?? LoopMode.off;
+              return IconButton(icon: Icon(mode == LoopMode.one ? Icons.repeat_one : Icons.repeat, size: 22),
+                color: mode != LoopMode.off ? cs.primary : cs.onSurfaceVariant,
+                onPressed: () => player.setLoopMode(switch(mode) { LoopMode.off => LoopMode.all, LoopMode.all => LoopMode.one, _ => LoopMode.off }));
+            }),
           ]),
           const SizedBox(height: 16),
+          // Volume + Speed
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Icon(Icons.volume_up, size: 18, color: cs.onSurfaceVariant),
             const SizedBox(width: 8),
-            SizedBox(width: 120, child: Slider(value: player.volume, min: 0, max: 1, onChanged: (v) => player.setVolume(v))),
+            StreamBuilder<double>(stream: player.volumeStream, initialData: player.volume, builder: (_, snap) {
+              return SizedBox(width: 120, child: Slider(value: snap.data ?? 1.0, min: 0, max: 1, onChanged: (v) => player.setVolume(v)));
+            }),
             const SizedBox(width: 16),
-            Text('${player.speed}x', style: const TextStyle(fontSize: 12)),
+            StreamBuilder<double>(stream: player.speedStream, initialData: player.speed, builder: (_, snap) {
+              final speed = snap.data ?? 1.0;
+              return Text('${speed}x', style: const TextStyle(fontSize: 12));
+            }),
             const SizedBox(width: 4),
             PopupMenuButton<double>(itemBuilder: (_) => [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) =>
               PopupMenuItem(value: s, child: Text('${s}x'))).toList(),
@@ -215,9 +267,13 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
             builder: (_, snap) => IconButton.filledTonal(
               icon: Icon(snap.data == true ? Icons.favorite : Icons.favorite_border),
               onPressed: () async {
-                await _db.toggleFavorite(currentFile.path, 'audio', currentFile.displayName);
-                setState(() {});
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(snap.data == true ? 'Retiré des favoris' : 'Ajouté aux favoris')));
+                try {
+                  await _db.toggleFavorite(currentFile.path, 'audio', currentFile.displayName);
+                  setState(() {});
+                  _showSuccess(snap.data == true ? 'Retiré des favoris' : 'Ajouté aux favoris');
+                } catch (e) {
+                  _showError('Erreur: $e');
+                }
               },
             ),
           )),
@@ -278,11 +334,11 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
               trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                 StreamBuilder<bool>(stream: player.playingStream, initialData: player.playing, builder: (_, snap) {
                   final playing = snap.data ?? false;
-                  return IconButton(icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 28), onPressed: () => playing ? player.pause() : player.play());
+                  return IconButton(icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 28), onPressed: () => playing ? handler.pause() : handler.play());
                 }),
-                IconButton(icon: const Icon(Icons.skip_next, size: 22), onPressed: () => player.seekToNext()),
-                IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () {
-                  player.stop();
+                IconButton(icon: const Icon(Icons.skip_next, size: 22), onPressed: () => handler.skipToNext()),
+                IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () async {
+                  try { await handler.stop(); } catch (e) { debugPrint('stop error: $e'); }
                   ref.read(currentAudioFileProvider.notifier).state = null;
                 }),
               ]),
@@ -294,52 +350,75 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
     );
   }
 
-  // ═══ ACTIONS ═══
+  // ═══ ACTIONS — ALL with try/catch ═══
   Future<void> _playFile(MediaFile file, List<MediaFile> allFiles) async {
-    final handler = await ref.read(audioHandlerProvider.future);
-    final index = allFiles.indexWhere((f) => f.path == file.path);
-    final paths = allFiles.map((f) => f.path).toList();
-    await handler.setPlaylist(paths, startIndex: index >= 0 ? index : 0); // AUTO-PLAYS now
-    ref.read(currentAudioFileProvider.notifier).state = file;
-    await _db.addRecentlyPlayed(file.path, file.displayName);
-    _loadPlaylistData();
+    try {
+      final handler = await ref.read(audioHandlerProvider.future);
+      final index = allFiles.indexWhere((f) => f.path == file.path);
+      final paths = allFiles.map((f) => f.path).toList();
+      await handler.setPlaylist(paths, startIndex: index >= 0 ? index : 0);
+      ref.read(currentAudioFileProvider.notifier).state = file;
+      await _db.addRecentlyPlayed(file.path, file.displayName);
+      _loadPlaylistData();
+    } catch (e) {
+      debugPrint('_playFile error: $e');
+      _showError('Lecture impossible: $e');
+    }
   }
 
   Future<void> _playAll(List<MediaFile> files) async {
     if (files.isEmpty) return;
-    final handler = await ref.read(audioHandlerProvider.future);
-    await handler.setPlaylist(files.map((f) => f.path).toList()); // AUTO-PLAYS
-    ref.read(currentAudioFileProvider.notifier).state = files.first;
+    try {
+      final handler = await ref.read(audioHandlerProvider.future);
+      await handler.setPlaylist(files.map((f) => f.path).toList());
+      ref.read(currentAudioFileProvider.notifier).state = files.first;
+    } catch (e) {
+      debugPrint('_playAll error: $e');
+      _showError('Lecture impossible: $e');
+    }
   }
 
   Future<void> _shuffleAll(List<MediaFile> files) async {
     if (files.isEmpty) return;
-    final handler = await ref.read(audioHandlerProvider.future);
-    final shuffled = List<MediaFile>.from(files)..shuffle();
-    await handler.setPlaylist(shuffled.map((f) => f.path).toList()); // AUTO-PLAYS
-    handler.player.setShuffleModeEnabled(true);
-    ref.read(currentAudioFileProvider.notifier).state = shuffled.first;
+    try {
+      final handler = await ref.read(audioHandlerProvider.future);
+      final shuffled = List<MediaFile>.from(files)..shuffle();
+      await handler.setPlaylist(shuffled.map((f) => f.path).toList());
+      await handler.player.setShuffleModeEnabled(true);
+      ref.read(currentAudioFileProvider.notifier).state = shuffled.first;
+    } catch (e) {
+      debugPrint('_shuffleAll error: $e');
+      _showError('Lecture impossible: $e');
+    }
   }
 
-  void _onSongAction(String action, MediaFile file, List<MediaFile> allFiles) {
-    switch (action) {
-      case 'play': _playFile(file, allFiles); break;
-      case 'next': _addToNext(file); break;
-      case 'playlist': showDialog(context: context, builder: (_) => _PlaylistPickerDialog(file: file, db: _db, onClose: _loadPlaylistData)); break;
-      case 'favorite':
-        _db.toggleFavorite(file.path, 'audio', file.displayName).then((_) {
+  Future<void> _onSongAction(String action, MediaFile file, List<MediaFile> allFiles) async {
+    try {
+      switch (action) {
+        case 'play': await _playFile(file, allFiles); break;
+        case 'next': await _addToNext(file); break;
+        case 'playlist': if (mounted) showDialog(context: context, builder: (_) => _PlaylistPickerDialog(file: file, db: _db, onClose: _loadPlaylistData)); break;
+        case 'favorite':
+          await _db.toggleFavorite(file.path, 'audio', file.displayName);
           _loadPlaylistData();
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Favori mis à jour'), duration: Duration(seconds: 1)));
-        });
-        break;
-      case 'info': _showFileInfo(file); break;
+          _showSuccess('Favori mis à jour');
+          break;
+        case 'info': _showFileInfo(file); break;
+      }
+    } catch (e) {
+      _showError('Erreur: $e');
     }
   }
 
   Future<void> _addToNext(MediaFile file) async {
-    final handler = await ref.read(audioHandlerProvider.future);
-    await handler.playNext(file.path); // FIXED: actually inserts after current track
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lire ensuite: ${file.displayName}')));
+    try {
+      final handler = await ref.read(audioHandlerProvider.future);
+      await handler.playNext(file.path);
+      _showSuccess('Lire ensuite: ${file.displayName}');
+    } catch (e) {
+      debugPrint('_addToNext error: $e');
+      _showError('Impossible d\'ajouter: $e');
+    }
   }
 
   void _createPlaylist() {
@@ -372,34 +451,66 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
     Expanded(child: Text(value, style: const TextStyle(fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis)),
   ]));
 
-  void _showPlaylistContent(String name, List<String> paths) {
+  Future<void> _showPlaylistContent(String name, List<String> paths) async {
+    if (paths.isEmpty) { _showError('Aucun titre à lire'); return; }
     showModalBottomSheet(context: context, isScrollControlled: true, builder: (_) => DraggableScrollableSheet(
       initialChildSize: 0.7, minChildSize: 0.3, maxChildSize: 0.95, expand: false,
       builder: (_, sc) => Column(children: [
         Padding(padding: const EdgeInsets.all(16), child: Row(children: [
           Expanded(child: Text(name, style: Theme.of(context).textTheme.titleLarge)),
           FilledButton.tonal(onPressed: () async {
-            if (paths.isNotEmpty) { final h = await ref.read(audioHandlerProvider.future); await h.setPlaylist(paths); if (mounted) Navigator.pop(context); }
+            try {
+              final h = await ref.read(audioHandlerProvider.future);
+              await h.setPlaylist(paths);
+              // Find the MediaFile for the first path to update mini-player
+              final allAudio = ref.read(audioFilesProvider).valueOrNull ?? [];
+              final firstFile = allAudio.where((f) => f.path == paths.first).firstOrNull;
+              if (firstFile != null) ref.read(currentAudioFileProvider.notifier).state = firstFile;
+              if (mounted) Navigator.pop(context);
+            } catch (e) {
+              _showError('Lecture impossible: $e');
+            }
           }, child: const Text('Tout lire')),
         ])),
         Expanded(child: ListView.builder(controller: sc, itemCount: paths.length, itemBuilder: (_, i) {
-          final name = p.basenameWithoutExtension(paths[i]).replaceAll(RegExp(r'[_\-]+'), ' ').trim();
-          return ListTile(leading: const Icon(Icons.music_note, size: 20), title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-            onTap: () async { final h = await ref.read(audioHandlerProvider.future); await h.setPlaylist(paths, startIndex: i); if (mounted) Navigator.pop(context); });
+          final fname = p.basenameWithoutExtension(paths[i]).replaceAll(RegExp(r'[_\-]+'), ' ').trim();
+          return ListTile(leading: const Icon(Icons.music_note, size: 20), title: Text(fname, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+            onTap: () async {
+              try {
+                final h = await ref.read(audioHandlerProvider.future);
+                await h.setPlaylist(paths, startIndex: i);
+                final allAudio = ref.read(audioFilesProvider).valueOrNull ?? [];
+                final file = allAudio.where((f) => f.path == paths[i]).firstOrNull;
+                if (file != null) ref.read(currentAudioFileProvider.notifier).state = file;
+                if (mounted) Navigator.pop(context);
+              } catch (e) {
+                _showError('Lecture impossible: $e');
+              }
+            });
         })),
       ]),
     ));
   }
 
-  void _showPlaylistDetail(Map<String, dynamic> playlist) async {
+  Future<void> _showPlaylistDetail(Map<String, dynamic> playlist) async {
     final items = await _db.getPlaylistItems(playlist['id'] as int);
     if (!mounted) return;
     showModalBottomSheet(context: context, isScrollControlled: true, builder: (_) => StatefulBuilder(builder: (ctx, setS) => Column(mainAxisSize: MainAxisSize.min, children: [
       Padding(padding: const EdgeInsets.all(16), child: Row(children: [
         Expanded(child: Text(playlist['name'] as String, style: Theme.of(context).textTheme.titleLarge)),
         FilledButton.tonal(onPressed: () async {
-          final paths = items.map((i) => i['file_path'] as String).toList();
-          if (paths.isNotEmpty) { final h = await ref.read(audioHandlerProvider.future); await h.setPlaylist(paths); if (ctx.mounted) Navigator.pop(ctx); }
+          try {
+            final paths = items.map((i) => i['file_path'] as String).toList();
+            if (paths.isEmpty) { _showError('Playlist vide'); return; }
+            final h = await ref.read(audioHandlerProvider.future);
+            await h.setPlaylist(paths);
+            final allAudio = ref.read(audioFilesProvider).valueOrNull ?? [];
+            final firstFile = allAudio.where((f) => f.path == paths.first).firstOrNull;
+            if (firstFile != null) ref.read(currentAudioFileProvider.notifier).state = firstFile;
+            if (ctx.mounted) Navigator.pop(ctx);
+          } catch (e) {
+            _showError('Lecture impossible: $e');
+          }
         }, child: const Text('Tout lire')),
       ])),
       SizedBox(height: 300, child: items.isEmpty ? const Center(child: Text('Playlist vide'))
@@ -409,22 +520,36 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
             title: Text(item['display_name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
             trailing: IconButton(icon: const Icon(Icons.remove_circle_outline, size: 18), onPressed: () async { await _db.removeFromPlaylist(item['id'] as int); items.removeAt(i); setS(() {}); _loadPlaylistData(); }),
             onTap: () async {
-              final paths = items.map((it) => it['file_path'] as String).toList();
-              final h = await ref.read(audioHandlerProvider.future);
-              await h.setPlaylist(paths, startIndex: i);
-              if (ctx.mounted) Navigator.pop(ctx);
+              try {
+                final paths = items.map((it) => it['file_path'] as String).toList();
+                final h = await ref.read(audioHandlerProvider.future);
+                await h.setPlaylist(paths, startIndex: i);
+                final allAudio = ref.read(audioFilesProvider).valueOrNull ?? [];
+                final file = allAudio.where((f) => f.path == paths[i]).firstOrNull;
+                if (file != null) ref.read(currentAudioFileProvider.notifier).state = file;
+                if (ctx.mounted) Navigator.pop(ctx);
+              } catch (e) {
+                _showError('Lecture impossible: $e');
+              }
             });
         })),
     ])));
   }
 
   Future<void> _playPlaylist(Map<String, dynamic> playlist) async {
-    final items = await _db.getPlaylistItems(playlist['id'] as int);
-    final paths = items.map((i) => i['file_path'] as String).toList();
-    if (paths.isEmpty) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Playlist vide'))); return; }
-    final handler = await ref.read(audioHandlerProvider.future);
-    await handler.setPlaylist(paths); // AUTO-PLAYS
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lecture: ${playlist['name']}'), duration: const Duration(seconds: 1)));
+    try {
+      final items = await _db.getPlaylistItems(playlist['id'] as int);
+      final paths = items.map((i) => i['file_path'] as String).toList();
+      if (paths.isEmpty) { _showError('Playlist vide'); return; }
+      final handler = await ref.read(audioHandlerProvider.future);
+      await handler.setPlaylist(paths);
+      final allAudio = ref.read(audioFilesProvider).valueOrNull ?? [];
+      final firstFile = allAudio.where((f) => f.path == paths.first).firstOrNull;
+      if (firstFile != null) ref.read(currentAudioFileProvider.notifier).state = firstFile;
+      _showSuccess('Lecture: ${playlist['name']}');
+    } catch (e) {
+      _showError('Lecture impossible: $e');
+    }
   }
 
   String _fmt(Duration d) { final m = d.inMinutes.remainder(60); final s = d.inSeconds.remainder(60); return '$m:${s.toString().padLeft(2, '0')}'; }
