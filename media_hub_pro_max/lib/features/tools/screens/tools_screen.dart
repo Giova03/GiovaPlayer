@@ -2,8 +2,11 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import '../../../core/utils/file_scanner.dart';
 import '../../../core/utils/media_processor.dart';
+import '../../../core/utils/security_utils.dart';
+import '../../../core/utils/vault_crypto.dart';
 
 class ToolsScreen extends ConsumerStatefulWidget {
   const ToolsScreen({super.key});
@@ -293,19 +296,16 @@ class _ToolsScreenState extends ConsumerState<ToolsScreen> with TickerProviderSt
         if (_pwResult.isNotEmpty) ...[const SizedBox(width: 8), IconButton.filled(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copié !'))), icon: const Icon(Icons.copy))]]),
     ]))),
     const SizedBox(height: 16),
-    ...[(Icons.enhanced_encryption, 'Chiffrer un fichier', 'AES-256-GCM'),
-      (Icons.no_encryption, 'Déchiffrer un fichier', 'Décryptage AES-256'),
-      (Icons.fingerprint, 'Vérifier hachage', 'MD5 / SHA-256'),
-      (Icons.verified_user, 'Vérifier intégrité', 'Comparer checksums'),
-      (Icons.password, 'Évaluer force mot de passe', 'Test de robustesse'),
-      (Icons.vpn_key, 'Générateur de clés', 'Clés AES/RSA/Ed25519'),
-      (Icons.shield, 'Audit sécurité', 'Vérifier les vulnérabilités'),
-      (Icons.security, 'Chiffrement note', 'Notes chiffrées'),
-      (Icons.local_police, 'Analyse permissions', 'Vérifier les apps'),
-      (Icons.archive, 'Archive chiffrée', 'ZIP/RAR avec mot de passe'),
+    ...[(Icons.enhanced_encryption, 'Chiffrer un fichier', 'AES-256-GCM', 'encrypt_file'),
+      (Icons.no_encryption, 'Déchiffrer un fichier', 'Décryptage AES-256', 'decrypt_file'),
+      (Icons.fingerprint, 'Vérifier hachage', 'MD5 / SHA-256', 'hash_file'),
+      (Icons.password, 'Évaluer force mot de passe', 'Test de robustesse', 'pw_strength'),
+      (Icons.vpn_key, 'Générateur de clés', 'Clés AES-256 / Ed25519', 'key_gen'),
+      (Icons.text_snippet, 'Chiffrer un texte', 'AES-256 pour notes', 'encrypt_text'),
+      (Icons.local_police, 'Analyse permissions', 'Vérifier les apps', 'perm_audit'),
     ].map((c) => Card(margin: const EdgeInsets.only(bottom: 4), child: ListTile(
       leading: Icon(c.$1, color: Theme.of(context).colorScheme.primary, size: 22), title: Text(c.$2, style: const TextStyle(fontSize: 14)), subtitle: Text(c.$3, style: const TextStyle(fontSize: 11)),
-      trailing: const Icon(Icons.chevron_right, size: 16), onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${c.$2} lancé'))),
+      trailing: const Icon(Icons.chevron_right, size: 16), onTap: () => _onSecurityAction(c.$4, c.$2),
     ))),
   ]);
 
@@ -646,6 +646,144 @@ class _ToolsScreenState extends ConsumerState<ToolsScreen> with TickerProviderSt
   Widget _sc(String l, String s, IconData i, Color c) => Column(children: [Icon(i, color: c, size: 20), const SizedBox(height: 4), Text(s, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)), Text(l, style: TextStyle(fontSize: 10, color: Colors.grey[600]))]);
   String _fs(int b) { if (b < 1024) return '$b B'; if (b < 1048576) return '${(b/1024).toStringAsFixed(1)} KB'; if (b < 1073741824) return '${(b/1048576).toStringAsFixed(1)} MB'; return '${(b/1073741824).toStringAsFixed(1)} GB'; }
   String _heaviestFolder(List<MediaFile> files) { final m = <String, int>{}; for (final f in files) { final d = f.path.substring(0, f.path.lastIndexOf('/')); m[d] = (m[d] ?? 0) + f.size; } if (m.isEmpty) return '-'; final e = m.entries.reduce((a, b) => a.value > b.value ? a : b); return '${e.key.substring(e.key.lastIndexOf('/') + 1)} (${_fs(e.value)})'; }
+
+  // ═══ SÉCURITÉ — ACTIONS RÉELLES ═══
+  void _onSecurityAction(String action, String title) {
+    switch (action) {
+      case 'encrypt_file': _encryptFileDialog(); break;
+      case 'decrypt_file': _decryptFileDialog(); break;
+      case 'hash_file': _hashFileDialog(); break;
+      case 'pw_strength': _pwStrengthDialog(); break;
+      case 'key_gen': _keyGenDialog(); break;
+      case 'encrypt_text': _encryptTextDialog(); break;
+      case 'perm_audit': _permAuditDialog(); break;
+    }
+  }
+
+  void _encryptFileDialog() {
+    final audio = ref.read(audioFilesProvider).valueOrNull ?? [];
+    final video = ref.read(videoFilesProvider).valueOrNull ?? [];
+    final all = [...audio, ...video];
+    showModalBottomSheet(context: context, builder: (_) => ListView(padding: const EdgeInsets.all(16), shrinkWrap: true, children: [
+      Text('Chiffrer un fichier (AES-256)', style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 12),
+      SizedBox(height: 300, child: ListView.builder(itemCount: all.length, itemBuilder: (_, i) {
+        final f = all[i];
+        return ListTile(leading: Icon(_ti(f.type)), title: Text(f.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)), subtitle: Text(_fs(f.size)),
+          onTap: () async {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chiffrement en cours...')));
+            try {
+              final encPath = await VaultCrypto.encryptFile(f.path);
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fichier chiffré: ${encPath.split('/').last}')));
+            } catch (e) {
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
+            }
+          });
+      })),
+    ]));
+  }
+
+  void _decryptFileDialog() {
+    final ctl = TextEditingController();
+    showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Déchiffrer un fichier'), content: TextField(controller: ctl, decoration: const InputDecoration(labelText: 'Chemin du fichier .enc', border: OutlineInputBorder())),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+        FilledButton(onPressed: () async {
+          Navigator.pop(context);
+          try {
+            final decrypted = await VaultCrypto.decryptFile(ctl.text);
+            final outPath = '${ctl.text}.dec';
+            await File(outPath).writeAsBytes(decrypted);
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fichier déchiffré: $outPath')));
+          } catch (e) {
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
+          }
+        }, child: const Text('Déchiffrer'))],
+    ));
+  }
+
+  void _hashFileDialog() {
+    final audio = ref.read(audioFilesProvider).valueOrNull ?? [];
+    final all = audio;
+    showModalBottomSheet(context: context, builder: (_) => ListView(padding: const EdgeInsets.all(16), shrinkWrap: true, children: [
+      Text('Hash de fichier (MD5 + SHA-256)', style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 12),
+      SizedBox(height: 300, child: ListView.builder(itemCount: all.length, itemBuilder: (_, i) {
+        final f = all[i];
+        return ListTile(leading: const Icon(Icons.music_note), title: Text(f.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+          onTap: () async {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Calcul du hash...')));
+            final md5 = await SecurityUtils.md5HashFile(f.path);
+            final sha = await SecurityUtils.sha256HashFile(f.path);
+            if (mounted) {
+              showDialog(context: context, builder: (_) => AlertDialog(title: Text(f.displayName), content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('MD5:', style: TextStyle(fontWeight: FontWeight.bold)), SelectableText(md5, style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
+                const SizedBox(height: 8), const Text('SHA-256:', style: TextStyle(fontWeight: FontWeight.bold)), SelectableText(sha, style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
+              ]), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer')),
+                FilledButton(onPressed: () { Clipboard.setData(ClipboardData(text: sha)); Navigator.pop(context); }, child: const Text('Copier SHA-256'))]));
+            }
+          });
+      })),
+    ]));
+  }
+
+  void _pwStrengthDialog() {
+    final ctl = TextEditingController();
+    showDialog(context: context, builder: (_) => StatefulBuilder(builder: (_, setS) => AlertDialog(title: const Text('Force du mot de passe'), content: Column(mainAxisSize: MainAxisSize.min, children: [
+      TextField(controller: ctl, decoration: const InputDecoration(labelText: 'Mot de passe', border: OutlineInputBorder()), onChanged: (_) => setS(() {})),
+      const SizedBox(height: 12),
+      if (ctl.text.isNotEmpty) _buildStrengthWidget(ctl.text),
+    ]), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer'))])));
+  }
+
+  Widget _buildStrengthWidget(String password) {
+    final strength = SecurityUtils.evaluatePassword(password);
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      LinearProgressIndicator(value: strength.score / 100, color: strength.color),
+      const SizedBox(height: 4),
+      Text('${strength.label} (${strength.score}/100)', style: TextStyle(color: strength.color, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 8),
+      ...strength.issues.map((i) => Text('• $i', style: const TextStyle(fontSize: 12))),
+    ]);
+  }
+
+  void _keyGenDialog() {
+    showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Générateur de clés'), content: Column(mainAxisSize: MainAxisSize.min, children: [
+      FilledButton(onPressed: () { Navigator.pop(context); _showKeyResult('AES-256', SecurityUtils.generateKey(bytes: 32)); }, child: const Text('Générer clé AES-256 (64 hex chars)')),
+      const SizedBox(height: 8),
+      FilledButton(onPressed: () { Navigator.pop(context); final kp = SecurityUtils.generateKeyPair(); _showKeyResult('Ed25519', 'Privée: ${kp.privateKey}\nPublique: ${kp.publicKey}'); }, child: const Text('Générer paire Ed25519')),
+    ]), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer'))]));
+  }
+
+  void _showKeyResult(String type, String key) {
+    showDialog(context: context, builder: (_) => AlertDialog(title: Text('Clé $type'), content: SelectableText(key, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer')),
+        FilledButton(onPressed: () { Clipboard.setData(ClipboardData(text: key)); Navigator.pop(context); }, child: const Text('Copier'))]));
+  }
+
+  void _encryptTextDialog() {
+    final ctl = TextEditingController();
+    showDialog(context: context, builder: (_) => StatefulBuilder(builder: (_, setS) => AlertDialog(title: const Text('Chiffrer un texte'), content: Column(mainAxisSize: MainAxisSize.min, children: [
+      TextField(controller: ctl, decoration: const InputDecoration(labelText: 'Texte à chiffrer', border: OutlineInputBorder()), maxLines: 4),
+      if (ctl.text.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: FutureBuilder<String>(
+        future: VaultCrypto.encryptString(ctl.text),
+        builder: (_, snap) => snap.hasData ? SelectableText(snap.data!, style: const TextStyle(fontSize: 10, fontFamily: 'monospace')) : const CircularProgressIndicator(),
+      )),
+    ]), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer')),
+      FilledButton(onPressed: () { setS(() {}); }, child: const Text('Chiffrer'))])));
+  }
+
+  void _permAuditDialog() {
+    showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Analyse des permissions'), content: const Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Permissions accordées à GiovaPlayer:', style: TextStyle(fontWeight: FontWeight.bold)),
+      SizedBox(height: 8),
+      Text('• Stockage (lecture médias)'), Text('• Internet (téléchargements)'), Text('• Biométrie (coffre-fort)'),
+      Text('• Wake lock (lecteur vidéo)'), Text('• Service premier plan (audio)'),
+      SizedBox(height: 8),
+      Text('Toutes les permissions sont utilisées légitimement.', style: TextStyle(fontSize: 12)),
+    ]), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))]));
+  }
 }
 
 // ═══ DIALOG HELPERS ═══

@@ -36,7 +36,9 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
     final pl = await _db.getPlaylists();
     final rp = await _db.getRecentlyPlayed();
     final fav = await _db.getFavorites();
-    setState(() { _playlists = pl; _recentlyPlayed = rp; _favorites = fav; });
+    if (mounted) {
+      setState(() { _playlists = pl; _recentlyPlayed = rp; _favorites = fav; });
+    }
   }
 
   @override
@@ -49,7 +51,9 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
       appBar: AppBar(
         title: const Text('Audio'),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(audioFilesProvider)),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: () async {
+            await forceRescanAll(ref);
+          }),
         ],
         bottom: TabBar(controller: _tc, tabs: const [
           Tab(text: 'Bibliothèque'), Tab(text: 'Dossiers'),
@@ -63,7 +67,6 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
           _playerTab(cs, currentFile),
           _playlistsTab(cs),
         ])),
-        // Mini player
         if (currentFile != null) _miniPlayer(cs, currentFile),
       ]),
     );
@@ -93,7 +96,7 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
           Expanded(child: filtered.isEmpty ? const Center(child: Text('Aucun fichier audio'))
             : ListView.builder(itemCount: filtered.length, itemBuilder: (_, i) {
               final f = filtered[i];
-              final isCurrent = ref.read(currentAudioFileProvider)?.path == f.path;
+              final isCurrent = ref.watch(currentAudioFileProvider)?.path == f.path;
               return ListTile(
                 selected: isCurrent,
                 leading: Container(width: 48, height: 48, decoration: BoxDecoration(
@@ -147,99 +150,78 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
   // ═══ LECTEUR ═══
   Widget _playerTab(ColorScheme cs, MediaFile? currentFile) {
     final playerAsync = ref.watch(audioHandlerProvider);
-
     return playerAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Erreur: $e')),
       data: (handler) {
         final player = handler.player;
-        final stream = player.playbackEventStream;
-
-        return StreamBuilder<PlaybackEvent>(
-          stream: stream,
-          builder: (_, __) {
-            final playing = player.playing;
-            final pos = player.position;
-            final dur = player.duration ?? Duration.zero;
-            final seqState = player.sequenceState;
-            final current = seqState?.currentSource;
-            final title = current?.tag?.title ?? currentFile?.displayName ?? 'Aucun titre';
-            final artist = current?.tag?.artist ?? currentFile?.artistDisplay ?? '';
-
-            return ListView(padding: const EdgeInsets.all(24), children: [
-              // Album art placeholder
-              Container(height: 240, decoration: BoxDecoration(
-                color: cs.primaryContainer, borderRadius: BorderRadius.circular(24),
-                gradient: LinearGradient(colors: [cs.primaryContainer, cs.tertiaryContainer], begin: Alignment.topLeft, end: Alignment.bottomRight)),
-                child: Center(child: Icon(Icons.music_note, size: 80, color: cs.onPrimaryContainer))),
-              const SizedBox(height: 24),
-
-              // Title & Artist
-              Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 4),
-              Text(artist, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 24),
-
-              // Progress bar
-              StreamBuilder<Duration>(stream: player.positionStream, builder: (_, snap) {
-                final p = snap.data ?? pos;
-                return Column(children: [
-                  Slider(value: dur.inMilliseconds > 0 ? p.inMilliseconds.toDouble() : 0,
-                    min: 0, max: dur.inMilliseconds.toDouble() > 0 ? dur.inMilliseconds.toDouble() : 1,
-                    onChanged: (v) => player.seek(Duration(milliseconds: v.round()))),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text(_fmt(p), style: const TextStyle(fontSize: 12)),
-                    Text(_fmt(dur), style: const TextStyle(fontSize: 12)),
-                  ]),
-                ]);
-              }),
-
-              // Controls
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                IconButton(icon: const Icon(Icons.shuffle, size: 22),
-                  color: player.shuffleModeEnabled ? cs.primary : cs.onSurfaceVariant,
-                  onPressed: () => player.setShuffleModeEnabled(!player.shuffleModeEnabled)),
-                const SizedBox(width: 8),
-                IconButton(icon: const Icon(Icons.skip_previous, size: 32), onPressed: () => player.seekToPrevious()),
-                const SizedBox(width: 16),
-                GestureDetector(onTap: () => playing ? player.pause() : player.play(),
-                  child: Container(decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary), padding: const EdgeInsets.all(20),
-                    child: Icon(playing ? Icons.pause : Icons.play_arrow, size: 40, color: cs.onPrimary))),
-                const SizedBox(width: 16),
-                IconButton(icon: const Icon(Icons.skip_next, size: 32), onPressed: () => player.seekToNext()),
-                const SizedBox(width: 8),
-                IconButton(icon: Icon(player.loopMode == LoopMode.one ? Icons.repeat_one : Icons.repeat, size: 22),
-                  color: player.loopMode != LoopMode.off ? cs.primary : cs.onSurfaceVariant,
-                  onPressed: () => player.setLoopMode(switch(player.loopMode) { LoopMode.off => LoopMode.all, LoopMode.all => LoopMode.one, _ => LoopMode.off })),
+        return ListView(padding: const EdgeInsets.all(24), children: [
+          Container(height: 240, decoration: BoxDecoration(
+            color: cs.primaryContainer, borderRadius: BorderRadius.circular(24),
+            gradient: LinearGradient(colors: [cs.primaryContainer, cs.tertiaryContainer], begin: Alignment.topLeft, end: Alignment.bottomRight)),
+            child: Center(child: Icon(Icons.music_note, size: 80, color: cs.onPrimaryContainer))),
+          const SizedBox(height: 24),
+          Text(currentFile?.displayName ?? 'Aucun titre', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 4),
+          Text(currentFile?.artistDisplay ?? '', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 24),
+          StreamBuilder<Duration>(stream: player.positionStream, builder: (_, snap) {
+            final p = snap.data ?? Duration.zero;
+            final d = player.duration ?? Duration.zero;
+            return Column(children: [
+              Slider(value: d.inMilliseconds > 0 ? p.inMilliseconds.toDouble().clamp(0, d.inMilliseconds.toDouble()) : 0,
+                min: 0, max: d.inMilliseconds.toDouble() > 0 ? d.inMilliseconds.toDouble() : 1,
+                onChanged: (v) => player.seek(Duration(milliseconds: v.round()))),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Text(_fmt(p), style: const TextStyle(fontSize: 12)),
+                Text(_fmt(d), style: const TextStyle(fontSize: 12)),
               ]),
-              const SizedBox(height: 16),
-
-              // Secondary controls
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.volume_up, size: 18, color: cs.onSurfaceVariant),
-                const SizedBox(width: 8),
-                SizedBox(width: 120, child: Slider(value: player.volume, min: 0, max: 1, onChanged: (v) => player.setVolume(v))),
-                const SizedBox(width: 16),
-                Text('${player.speed}x', style: const TextStyle(fontSize: 12)),
-                const SizedBox(width: 4),
-                PopupMenuButton<double>(itemBuilder: (_) => [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) =>
-                  PopupMenuItem(value: s, child: Text('${s}x'))).toList(),
-                  onSelected: (s) => player.setSpeed(s),
-                  child: const Icon(Icons.speed, size: 20)),
-              ]),
-              const SizedBox(height: 24),
-
-              // Favorites button
-              if (currentFile != null) Center(child: FutureBuilder<bool>(
-                future: _db.isFavorite(currentFile.path),
-                builder: (_, snap) => IconButton.filledTonal(
-                  icon: Icon(snap.data == true ? Icons.favorite : Icons.favorite_border),
-                  onPressed: () async { await _db.toggleFavorite(currentFile.path, 'audio', currentFile.displayName); setState(() {}); },
-                ),
-              )),
             ]);
-          },
-        );
+          }),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            IconButton(icon: const Icon(Icons.shuffle, size: 22),
+              color: player.shuffleModeEnabled ? cs.primary : cs.onSurfaceVariant,
+              onPressed: () => player.setShuffleModeEnabled(!player.shuffleModeEnabled)),
+            const SizedBox(width: 8),
+            IconButton(icon: const Icon(Icons.skip_previous, size: 32), onPressed: () => player.seekToPrevious()),
+            const SizedBox(width: 16),
+            GestureDetector(onTap: () => player.playing ? player.pause() : player.play(),
+              child: Container(decoration: BoxDecoration(shape: BoxShape.circle, color: cs.primary), padding: const EdgeInsets.all(20),
+                child: StreamBuilder<bool>(stream: player.playingStream, initialData: player.playing, builder: (_, snap) =>
+                  Icon(snap.data == true ? Icons.pause : Icons.play_arrow, size: 40, color: cs.onPrimary)))),
+            const SizedBox(width: 16),
+            IconButton(icon: const Icon(Icons.skip_next, size: 32), onPressed: () => player.seekToNext()),
+            const SizedBox(width: 8),
+            IconButton(icon: Icon(player.loopMode == LoopMode.one ? Icons.repeat_one : Icons.repeat, size: 22),
+              color: player.loopMode != LoopMode.off ? cs.primary : cs.onSurfaceVariant,
+              onPressed: () => player.setLoopMode(switch(player.loopMode) { LoopMode.off => LoopMode.all, LoopMode.all => LoopMode.one, _ => LoopMode.off })),
+          ]),
+          const SizedBox(height: 16),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.volume_up, size: 18, color: cs.onSurfaceVariant),
+            const SizedBox(width: 8),
+            SizedBox(width: 120, child: Slider(value: player.volume, min: 0, max: 1, onChanged: (v) => player.setVolume(v))),
+            const SizedBox(width: 16),
+            Text('${player.speed}x', style: const TextStyle(fontSize: 12)),
+            const SizedBox(width: 4),
+            PopupMenuButton<double>(itemBuilder: (_) => [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) =>
+              PopupMenuItem(value: s, child: Text('${s}x'))).toList(),
+              onSelected: (s) => player.setSpeed(s),
+              child: const Icon(Icons.speed, size: 20)),
+          ]),
+          const SizedBox(height: 24),
+          if (currentFile != null) Center(child: FutureBuilder<bool>(
+            future: _db.isFavorite(currentFile.path),
+            builder: (_, snap) => IconButton.filledTonal(
+              icon: Icon(snap.data == true ? Icons.favorite : Icons.favorite_border),
+              onPressed: () async {
+                await _db.toggleFavorite(currentFile.path, 'audio', currentFile.displayName);
+                setState(() {});
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(snap.data == true ? 'Retiré des favoris' : 'Ajouté aux favoris')));
+              },
+            ),
+          )),
+        ]);
       },
     );
   }
@@ -247,22 +229,16 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
   // ═══ PLAYLISTS ═══
   Widget _playlistsTab(ColorScheme cs) {
     return ListView(padding: const EdgeInsets.all(16), children: [
-      // Create playlist
       FilledButton.tonalIcon(onPressed: _createPlaylist, icon: const Icon(Icons.add), label: const Text('Nouvelle playlist')),
       const SizedBox(height: 16),
-
-      // Favorites section
       Card(child: ListTile(leading: Icon(Icons.favorite, color: Colors.red), title: const Text('Favoris', style: TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text('${_favorites.length} titres'), trailing: const Icon(Icons.chevron_right),
         onTap: () => _showPlaylistContent('Favoris', _favorites.map((f) => f['file_path'] as String).toList()))),
       const SizedBox(height: 8),
-
-      // Recently played
       Card(child: ListTile(leading: Icon(Icons.history, color: cs.primary), title: const Text('Récemment écoutés', style: TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text('${_recentlyPlayed.length} titres'), trailing: const Icon(Icons.chevron_right),
         onTap: () => _showPlaylistContent('Récents', _recentlyPlayed.map((f) => f['file_path'] as String).toList()))),
       const SizedBox(height: 12),
-
       Text('Mes playlists', style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 8),
       if (_playlists.isEmpty) const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('Aucune playlist créée')))
@@ -272,7 +248,7 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
         subtitle: FutureBuilder<int>(future: _db.getPlaylistCount(pl['id'] as int), builder: (_, snap) => Text('${snap.data ?? 0} titres')),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           IconButton(icon: const Icon(Icons.play_arrow, size: 20), onPressed: () => _playPlaylist(pl)),
-          IconButton(icon: const Icon(Icons.delete_outline, size: 20), onPressed: () async { await _db.deletePlaylist(pl['id'] as int); _loadPlaylistData(); }),
+          IconButton(icon: const Icon(Icons.delete_outline, size: 20), onPressed: () => _confirmDeletePlaylist(pl)),
         ]),
         onTap: () => _showPlaylistDetail(pl),
       ))),
@@ -287,9 +263,8 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
       error: (_, __) => const SizedBox.shrink(),
       data: (handler) {
         final player = handler.player;
-        return Container(decoration: BoxDecoration(color: cs.surfaceContainerHigh, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, -2))]),
+        return Container(decoration: BoxDecoration(color: cs.surfaceContainerHigh, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8, offset: const Offset(0, -2))]),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            // Progress bar
             StreamBuilder<Duration>(stream: player.positionStream, builder: (_, snap) {
               final p = snap.data ?? Duration.zero;
               final d = player.duration ?? Duration.zero;
@@ -301,11 +276,15 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
               title: Text(file.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               subtitle: Text(file.artistDisplay, style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
               trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                StreamBuilder<bool>(stream: player.playingStream, builder: (_, snap) {
+                StreamBuilder<bool>(stream: player.playingStream, initialData: player.playing, builder: (_, snap) {
                   final playing = snap.data ?? false;
                   return IconButton(icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 28), onPressed: () => playing ? player.pause() : player.play());
                 }),
                 IconButton(icon: const Icon(Icons.skip_next, size: 22), onPressed: () => player.seekToNext()),
+                IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () {
+                  player.stop();
+                  ref.read(currentAudioFileProvider.notifier).state = null;
+                }),
               ]),
               onTap: () => _tc.animateTo(2),
             ),
@@ -320,9 +299,8 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
     final handler = await ref.read(audioHandlerProvider.future);
     final index = allFiles.indexWhere((f) => f.path == file.path);
     final paths = allFiles.map((f) => f.path).toList();
-    await handler.setPlaylist(paths, startIndex: index >= 0 ? index : 0);
+    await handler.setPlaylist(paths, startIndex: index >= 0 ? index : 0); // AUTO-PLAYS now
     ref.read(currentAudioFileProvider.notifier).state = file;
-    ref.read(showMiniPlayerProvider.notifier).state = true;
     await _db.addRecentlyPlayed(file.path, file.displayName);
     _loadPlaylistData();
   }
@@ -330,37 +308,38 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
   Future<void> _playAll(List<MediaFile> files) async {
     if (files.isEmpty) return;
     final handler = await ref.read(audioHandlerProvider.future);
-    await handler.setPlaylist(files.map((f) => f.path).toList(), startIndex: 0);
+    await handler.setPlaylist(files.map((f) => f.path).toList()); // AUTO-PLAYS
     ref.read(currentAudioFileProvider.notifier).state = files.first;
-    ref.read(showMiniPlayerProvider.notifier).state = true;
   }
 
   Future<void> _shuffleAll(List<MediaFile> files) async {
     if (files.isEmpty) return;
     final handler = await ref.read(audioHandlerProvider.future);
     final shuffled = List<MediaFile>.from(files)..shuffle();
-    await handler.setPlaylist(shuffled.map((f) => f.path).toList(), startIndex: 0);
+    await handler.setPlaylist(shuffled.map((f) => f.path).toList()); // AUTO-PLAYS
     handler.player.setShuffleModeEnabled(true);
     ref.read(currentAudioFileProvider.notifier).state = shuffled.first;
-    ref.read(showMiniPlayerProvider.notifier).state = true;
   }
 
   void _onSongAction(String action, MediaFile file, List<MediaFile> allFiles) {
     switch (action) {
       case 'play': _playFile(file, allFiles); break;
       case 'next': _addToNext(file); break;
-      case 'playlist': _addToPlaylistDialog(file); break;
-      case 'favorite': _db.toggleFavorite(file.path, 'audio', file.displayName); break;
+      case 'playlist': showDialog(context: context, builder: (_) => _PlaylistPickerDialog(file: file, db: _db, onClose: _loadPlaylistData)); break;
+      case 'favorite':
+        _db.toggleFavorite(file.path, 'audio', file.displayName).then((_) {
+          _loadPlaylistData();
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Favori mis à jour'), duration: Duration(seconds: 1)));
+        });
+        break;
       case 'info': _showFileInfo(file); break;
     }
   }
 
   Future<void> _addToNext(MediaFile file) async {
     final handler = await ref.read(audioHandlerProvider.future);
-    final source = AudioSource.file(file.path, tag: MediaItem(id: file.path, title: file.displayName, artist: file.artistDisplay));
-    // Add after current in sequence
-    handler.player.seekToNext();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ajouté: ${file.displayName}')));
+    await handler.playNext(file.path); // FIXED: actually inserts after current track
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lire ensuite: ${file.displayName}')));
   }
 
   void _createPlaylist() {
@@ -368,12 +347,17 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
     showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Nouvelle playlist'),
       content: TextField(controller: ctl, decoration: const InputDecoration(labelText: 'Nom', border: OutlineInputBorder()), autofocus: true),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
-        FilledButton(onPressed: () async { if (ctl.text.isNotEmpty) { await _db.createPlaylist(ctl.text); Navigator.pop(context); _loadPlaylistData(); } }, child: const Text('Créer'))],
+        FilledButton(onPressed: () async { if (ctl.text.isNotEmpty) { await _db.createPlaylist(ctl.text); if (mounted) Navigator.pop(context); _loadPlaylistData(); } }, child: const Text('Créer'))],
     ));
   }
 
-  void _addToPlaylistDialog(MediaFile file) {
-    showDialog(context: context, builder: (_) => _PlaylistPickerDialog(file: file, db: _db));
+  void _confirmDeletePlaylist(Map<String, dynamic> pl) {
+    showDialog(context: context, builder: (_) => AlertDialog(
+      title: const Text('Supprimer la playlist ?'),
+      content: Text('${pl["name"]} sera définitivement supprimée.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () async { await _db.deletePlaylist(pl['id'] as int); if (mounted) Navigator.pop(context); _loadPlaylistData(); }, child: const Text('Supprimer'))],
+    ));
   }
 
   void _showFileInfo(MediaFile file) => showModalBottomSheet(context: context, builder: (_) => ListView(padding: const EdgeInsets.all(24), shrinkWrap: true, children: [
@@ -395,13 +379,13 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
         Padding(padding: const EdgeInsets.all(16), child: Row(children: [
           Expanded(child: Text(name, style: Theme.of(context).textTheme.titleLarge)),
           FilledButton.tonal(onPressed: () async {
-            if (paths.isNotEmpty) { final h = await ref.read(audioHandlerProvider.future); await h.setPlaylist(paths); Navigator.pop(context); }
+            if (paths.isNotEmpty) { final h = await ref.read(audioHandlerProvider.future); await h.setPlaylist(paths); if (mounted) Navigator.pop(context); }
           }, child: const Text('Tout lire')),
         ])),
         Expanded(child: ListView.builder(controller: sc, itemCount: paths.length, itemBuilder: (_, i) {
           final name = p.basenameWithoutExtension(paths[i]).replaceAll(RegExp(r'[_\-]+'), ' ').trim();
           return ListTile(leading: const Icon(Icons.music_note, size: 20), title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-            onTap: () async { final h = await ref.read(audioHandlerProvider.future); await h.setPlaylist(paths, startIndex: i); Navigator.pop(context); });
+            onTap: () async { final h = await ref.read(audioHandlerProvider.future); await h.setPlaylist(paths, startIndex: i); if (mounted) Navigator.pop(context); });
         })),
       ]),
     ));
@@ -410,12 +394,12 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
   void _showPlaylistDetail(Map<String, dynamic> playlist) async {
     final items = await _db.getPlaylistItems(playlist['id'] as int);
     if (!mounted) return;
-    showModalBottomSheet(context: context, isScrollControlled: true, builder: (_) => Column(mainAxisSize: MainAxisSize.min, children: [
+    showModalBottomSheet(context: context, isScrollControlled: true, builder: (_) => StatefulBuilder(builder: (ctx, setS) => Column(mainAxisSize: MainAxisSize.min, children: [
       Padding(padding: const EdgeInsets.all(16), child: Row(children: [
         Expanded(child: Text(playlist['name'] as String, style: Theme.of(context).textTheme.titleLarge)),
         FilledButton.tonal(onPressed: () async {
           final paths = items.map((i) => i['file_path'] as String).toList();
-          if (paths.isNotEmpty) { final h = await ref.read(audioHandlerProvider.future); await h.setPlaylist(paths); Navigator.pop(context); }
+          if (paths.isNotEmpty) { final h = await ref.read(audioHandlerProvider.future); await h.setPlaylist(paths); if (ctx.mounted) Navigator.pop(ctx); }
         }, child: const Text('Tout lire')),
       ])),
       SizedBox(height: 300, child: items.isEmpty ? const Center(child: Text('Playlist vide'))
@@ -423,24 +407,24 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
           final item = items[i];
           return ListTile(leading: const Icon(Icons.music_note, size: 20),
             title: Text(item['display_name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-            trailing: IconButton(icon: const Icon(Icons.remove_circle_outline, size: 18), onPressed: () async { await _db.removeFromPlaylist(item['id'] as int); Navigator.pop(context); _showPlaylistDetail(playlist); }),
+            trailing: IconButton(icon: const Icon(Icons.remove_circle_outline, size: 18), onPressed: () async { await _db.removeFromPlaylist(item['id'] as int); items.removeAt(i); setS(() {}); _loadPlaylistData(); }),
             onTap: () async {
               final paths = items.map((it) => it['file_path'] as String).toList();
               final h = await ref.read(audioHandlerProvider.future);
               await h.setPlaylist(paths, startIndex: i);
-              Navigator.pop(context);
+              if (ctx.mounted) Navigator.pop(ctx);
             });
         })),
-    ]));
+    ])));
   }
 
   Future<void> _playPlaylist(Map<String, dynamic> playlist) async {
     final items = await _db.getPlaylistItems(playlist['id'] as int);
     final paths = items.map((i) => i['file_path'] as String).toList();
-    if (paths.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Playlist vide'))); return; }
+    if (paths.isEmpty) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Playlist vide'))); return; }
     final handler = await ref.read(audioHandlerProvider.future);
-    await handler.setPlaylist(paths);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lecture: ${playlist['name']}')));
+    await handler.setPlaylist(paths); // AUTO-PLAYS
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lecture: ${playlist['name']}'), duration: const Duration(seconds: 1)));
   }
 
   String _fmt(Duration d) { final m = d.inMinutes.remainder(60); final s = d.inSeconds.remainder(60); return '$m:${s.toString().padLeft(2, '0')}'; }
@@ -449,7 +433,8 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> with Tick
 class _PlaylistPickerDialog extends StatelessWidget {
   final MediaFile file;
   final AppDatabase db;
-  const _PlaylistPickerDialog({required this.file, required this.db});
+  final VoidCallback onClose;
+  const _PlaylistPickerDialog({required this.file, required this.db, required this.onClose});
 
   @override
   Widget build(BuildContext context) {
@@ -464,7 +449,13 @@ class _PlaylistPickerDialog extends StatelessWidget {
             shrinkWrap: true, itemCount: playlists.length, itemBuilder: (_, i) {
             final pl = playlists[i];
             return ListTile(leading: const Icon(Icons.queue_music), title: Text(pl['name'] as String),
-              onTap: () async { await db.addToPlaylist(pl['id'] as int, file.path, file.displayName, 0); Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ajouté à ${pl['name']}'))); });
+              onTap: () async {
+                final pos = await db.getNextPlaylistPosition(pl['id'] as int);
+                await db.addToPlaylist(pl['id'] as int, file.path, file.displayName, pos);
+                if (context.mounted) Navigator.pop(context);
+                onClose();
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ajouté à ${pl['name']}')));
+              });
           }));
         },
       ),

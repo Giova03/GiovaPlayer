@@ -5,21 +5,21 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
-/// AES-256-CBC encryption/decryption for vault photos and files.
+/// AES-256-CBC encryption/decryption for vault photos, files, and text data.
 /// The encryption key is stored securely in FlutterSecureStorage.
 class VaultCrypto {
   static const _storage = FlutterSecureStorage();
   static const _keyId = 'vault_aes256_key';
   static String? _cachedKey;
 
-  /// Get or generate the AES-256 encryption key
+  /// Get or generate the AES-256 encryption key (32 raw bytes stored as base64)
   static Future<String> _getKey() async {
-    if (_cachedKey != null && _cachedKey!.length == 32) return _cachedKey!;
+    if (_cachedKey != null && _cachedKey!.length == 44) return _cachedKey!;
     var key = await _storage.read(key: _keyId);
-    if (key == null || key.length != 32) {
-      // Generate a new 256-bit key (32 bytes = 32 UTF-8 chars)
+    if (key == null || key.length != 44) {
+      // Generate a new 256-bit key (32 bytes) and store as full base64 (44 chars)
       final randomKey = Key.fromSecureRandom(32);
-      key = randomKey.base64.substring(0, 32);
+      key = randomKey.base64;
       await _storage.write(key: _keyId, value: key);
     }
     _cachedKey = key;
@@ -29,7 +29,7 @@ class VaultCrypto {
   /// Encrypt bytes using AES-256-CBC
   static Future<Uint8List> encryptBytes(Uint8List data) async {
     final keyStr = await _getKey();
-    final key = Key.fromUtf8(keyStr);
+    final key = Key.fromBase64(keyStr);
     final iv = IV.fromSecureRandom(16);
     final encrypter = Encrypter(AES(key, mode: AESMode.cbc, padding: 'PKCS7'));
     final encrypted = encrypter.encryptBytes(data, iv: iv);
@@ -44,7 +44,7 @@ class VaultCrypto {
   static Future<Uint8List> decryptBytes(Uint8List data) async {
     if (data.length < 16) throw Exception('Données invalides: trop courtes');
     final keyStr = await _getKey();
-    final key = Key.fromUtf8(keyStr);
+    final key = Key.fromBase64(keyStr);
     // Extract IV from first 16 bytes
     final ivBytes = data.sublist(0, 16);
     final iv = IV(ivBytes);
@@ -52,6 +52,22 @@ class VaultCrypto {
     final encrypter = Encrypter(AES(key, mode: AESMode.cbc, padding: 'PKCS7'));
     final encrypted = Encrypted(encryptedBytes);
     return Uint8List.fromList(encrypter.decryptBytes(encrypted, iv: iv));
+  }
+
+  /// Encrypt a string (for passwords, card numbers, etc.)
+  static Future<String> encryptString(String plaintext) async {
+    final bytes = Uint8List.fromList(plaintext.codeUnits);
+    final encrypted = await encryptBytes(bytes);
+    return encrypted.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  /// Decrypt a string
+  static Future<String> decryptString(String ciphertextHex) async {
+    final bytes = Uint8List.fromList(
+      List.generate(ciphertextHex.length ~/ 2, (i) => int.parse(ciphertextHex.substring(i * 2, i * 2 + 2), radix: 16)),
+    );
+    final decrypted = await decryptBytes(bytes);
+    return String.fromCharCodes(decrypted);
   }
 
   /// Encrypt a file and save to vault directory
@@ -86,9 +102,18 @@ class VaultCrypto {
   static Future<String> decryptToTemp(String encryptedPath, String originalName) async {
     final decrypted = await decryptFile(encryptedPath);
     final tempDir = await getTemporaryDirectory();
-    final tempPath = p.join(tempDir.path, originalName);
+    final uniqueName = '${DateTime.now().millisecondsSinceEpoch}_$originalName';
+    final tempPath = p.join(tempDir.path, uniqueName);
     await File(tempPath).writeAsBytes(decrypted);
     return tempPath;
+  }
+
+  /// Delete a decrypted temp file
+  static Future<void> deleteTempFile(String tempPath) async {
+    try {
+      final file = File(tempPath);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
   }
 
   /// Get the vault directory, creating it if needed

@@ -17,8 +17,9 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true"
-        android:usesCleartextTraffic="true"
-        android:allowBackup="true">
+        android:usesCleartextTraffic="false"
+        android:allowBackup="false"
+        android:fullBackupContent="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

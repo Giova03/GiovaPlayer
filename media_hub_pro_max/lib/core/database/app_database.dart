@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
+import '../utils/vault_crypto.dart';
 
 class AppDatabase {
   static Database? _db;
@@ -17,55 +18,68 @@ class AppDatabase {
     final dbPath = await getDatabasesPath();
     return openDatabase(
       p.join(dbPath, 'giova_player.db'),
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
-        await db.execute('''CREATE TABLE vault_notes (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, created_at INTEGER, updated_at INTEGER
-        )''');
-        await db.execute('''CREATE TABLE vault_passwords (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, service TEXT, username TEXT, password TEXT, url TEXT, notes TEXT, created_at INTEGER
-        )''');
-        await db.execute('''CREATE TABLE vault_cards (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, holder TEXT, number_encrypted TEXT, expiry TEXT, cvv_encrypted TEXT, card_type TEXT, notes TEXT, created_at INTEGER
-        )''');
-        await db.execute('''CREATE TABLE vault_photos (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, original_path TEXT, stored_path TEXT, created_at INTEGER
-        )''');
-        await db.execute('''CREATE TABLE vault_files (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, original_path TEXT, stored_path TEXT, file_name TEXT, file_size INTEGER, created_at INTEGER
-        )''');
-        await db.execute('''CREATE TABLE favorites (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, file_path TEXT, file_type TEXT, display_name TEXT, created_at INTEGER
-        )''');
-        await db.execute('''CREATE TABLE playlists (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, created_at INTEGER
-        )''');
-        await db.execute('''CREATE TABLE playlist_items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, playlist_id INTEGER, file_path TEXT, display_name TEXT, position INTEGER,
-          FOREIGN KEY(playlist_id) REFERENCES playlists(id)
-        )''');
-        await db.execute('''CREATE TABLE download_history (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT, file_name TEXT, file_path TEXT, file_size INTEGER, status TEXT, created_at INTEGER
-        )''');
-        await db.execute('''CREATE TABLE break_in_log (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, pin_used TEXT
-        )''');
-        await db.execute('''CREATE TABLE recently_played (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, file_path TEXT, display_name TEXT, played_at INTEGER
-        )''');
+        await _createTables(db);
+        await _createIndexes(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
+          try { await db.execute('ALTER TABLE playlist_items ADD COLUMN display_name TEXT'); } catch (_) {}
           await db.execute('''CREATE TABLE IF NOT EXISTS recently_played (
             id INTEGER PRIMARY KEY AUTOINCREMENT, file_path TEXT, display_name TEXT, played_at INTEGER
           )''');
-          // Add display_name column to playlist_items if not exists
-          try {
-            await db.execute('ALTER TABLE playlist_items ADD COLUMN display_name TEXT');
-          } catch (_) {}
+        }
+        if (oldVersion < 3) {
+          await _createIndexes(db);
         }
       },
     );
+  }
+
+  Future<void> _createTables(Database db) async {
+    await db.execute('''CREATE TABLE vault_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, created_at INTEGER, updated_at INTEGER
+    )''');
+    await db.execute('''CREATE TABLE vault_passwords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, service TEXT, username TEXT, password TEXT, url TEXT, notes TEXT, created_at INTEGER
+    )''');
+    await db.execute('''CREATE TABLE vault_cards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, holder TEXT, number_encrypted TEXT, expiry TEXT, cvv_encrypted TEXT, card_type TEXT, notes TEXT, created_at INTEGER
+    )''');
+    await db.execute('''CREATE TABLE vault_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, original_path TEXT, stored_path TEXT, created_at INTEGER
+    )''');
+    await db.execute('''CREATE TABLE vault_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, original_path TEXT, stored_path TEXT, file_name TEXT, file_size INTEGER, created_at INTEGER
+    )''');
+    await db.execute('''CREATE TABLE favorites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, file_path TEXT, file_type TEXT, display_name TEXT, created_at INTEGER
+    )''');
+    await db.execute('''CREATE TABLE playlists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, created_at INTEGER
+    )''');
+    await db.execute('''CREATE TABLE playlist_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, playlist_id INTEGER, file_path TEXT, display_name TEXT, position INTEGER,
+      FOREIGN KEY(playlist_id) REFERENCES playlists(id)
+    )''');
+    await db.execute('''CREATE TABLE download_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT, file_name TEXT, file_path TEXT, file_size INTEGER, status TEXT, created_at INTEGER
+    )''');
+    await db.execute('''CREATE TABLE break_in_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, pin_used TEXT
+    )''');
+    await db.execute('''CREATE TABLE recently_played (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, file_path TEXT, display_name TEXT, played_at INTEGER
+    )''');
+  }
+
+  Future<void> _createIndexes(Database db) async {
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_favorites_path ON favorites(file_path)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_playlist_items_pid ON playlist_items(playlist_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_recently_played_path ON recently_played(file_path)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_download_history_url ON download_history(url)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_break_in_log_ts ON break_in_log(timestamp)');
   }
 
   // ─── VAULT NOTES ───
@@ -87,15 +101,28 @@ class AppDatabase {
     return db.delete('vault_notes', where: 'id = ?', whereArgs: [id]);
   }
 
-  // ─── VAULT PASSWORDS ───
+  // ─── VAULT PASSWORDS (encrypted) ───
   Future<List<Map<String, dynamic>>> getVaultPasswords() async {
     final db = await database;
-    return db.query('vault_passwords', orderBy: 'created_at DESC');
+    final rows = await db.query('vault_passwords', orderBy: 'created_at DESC');
+    // Decrypt passwords before returning
+    final result = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final map = Map<String, dynamic>.from(row);
+      try {
+        if (map['password'] != null && (map['password'] as String).isNotEmpty) {
+          map['password'] = await VaultCrypto.decryptString(map['password'] as String);
+        }
+      } catch (_) {}
+      result.add(map);
+    }
+    return result;
   }
   Future<int> insertVaultPassword(String service, String username, String password, {String? url, String? notes}) async {
     final db = await database;
+    final encPassword = await VaultCrypto.encryptString(password);
     return db.insert('vault_passwords', {
-      'service': service, 'username': username, 'password': password,
+      'service': service, 'username': username, 'password': encPassword,
       'url': url ?? '', 'notes': notes ?? '', 'created_at': DateTime.now().millisecondsSinceEpoch,
     });
   }
@@ -104,16 +131,32 @@ class AppDatabase {
     return db.delete('vault_passwords', where: 'id = ?', whereArgs: [id]);
   }
 
-  // ─── VAULT CARDS ───
+  // ─── VAULT CARDS (encrypted) ───
   Future<List<Map<String, dynamic>>> getVaultCards() async {
     final db = await database;
-    return db.query('vault_cards', orderBy: 'created_at DESC');
+    final rows = await db.query('vault_cards', orderBy: 'created_at DESC');
+    final result = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final map = Map<String, dynamic>.from(row);
+      try {
+        if (map['number_encrypted'] != null && (map['number_encrypted'] as String).isNotEmpty) {
+          map['number_encrypted'] = await VaultCrypto.decryptString(map['number_encrypted'] as String);
+        }
+        if (map['cvv_encrypted'] != null && (map['cvv_encrypted'] as String).isNotEmpty) {
+          map['cvv_encrypted'] = await VaultCrypto.decryptString(map['cvv_encrypted'] as String);
+        }
+      } catch (_) {}
+      result.add(map);
+    }
+    return result;
   }
   Future<int> insertVaultCard(String holder, String numberEnc, String expiry, String cvvEnc, String cardType, {String? notes}) async {
     final db = await database;
+    final encNumber = await VaultCrypto.encryptString(numberEnc);
+    final encCvv = await VaultCrypto.encryptString(cvvEnc);
     return db.insert('vault_cards', {
-      'holder': holder, 'number_encrypted': numberEnc, 'expiry': expiry,
-      'cvv_encrypted': cvvEnc, 'card_type': cardType, 'notes': notes ?? '', 'created_at': DateTime.now().millisecondsSinceEpoch,
+      'holder': holder, 'number_encrypted': encNumber, 'expiry': expiry,
+      'cvv_encrypted': encCvv, 'card_type': cardType, 'notes': notes ?? '', 'created_at': DateTime.now().millisecondsSinceEpoch,
     });
   }
   Future<int> deleteVaultCard(int id) async {
@@ -208,8 +251,14 @@ class AppDatabase {
   }
   Future<int> getPlaylistCount(int playlistId) async {
     final db = await database;
-    final result = await db.query('playlist_items', where: 'playlist_id = ?', whereArgs: [playlistId]);
-    return result.length;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM playlist_items WHERE playlist_id = ?', [playlistId]);
+    return result.first['count'] as int? ?? 0;
+  }
+  Future<int> getNextPlaylistPosition(int playlistId) async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT MAX(position) as max_pos FROM playlist_items WHERE playlist_id = ?', [playlistId]);
+    final maxPos = result.first['max_pos'] as int? ?? -1;
+    return maxPos + 1;
   }
 
   // ─── RECENTLY PLAYED ───
@@ -219,11 +268,27 @@ class AppDatabase {
   }
   Future<void> addRecentlyPlayed(String filePath, String displayName) async {
     final db = await database;
-    // Remove existing entry for this file
     await db.delete('recently_played', where: 'file_path = ?', whereArgs: [filePath]);
     await db.insert('recently_played', {
       'file_path': filePath, 'display_name': displayName, 'played_at': DateTime.now().millisecondsSinceEpoch,
     });
+  }
+
+  // ─── DOWNLOAD HISTORY ───
+  Future<List<Map<String, dynamic>>> getDownloadHistory() async {
+    final db = await database;
+    return db.query('download_history', orderBy: 'created_at DESC');
+  }
+  Future<int> insertDownloadHistory(String url, String fileName, String filePath, int fileSize, String status) async {
+    final db = await database;
+    return db.insert('download_history', {
+      'url': url, 'file_name': fileName, 'file_path': filePath, 'file_size': fileSize,
+      'status': status, 'created_at': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+  Future<int> deleteDownloadHistory(int id) async {
+    final db = await database;
+    return db.delete('download_history', where: 'id = ?', whereArgs: [id]);
   }
 
   // ─── BREAK-IN LOG ───

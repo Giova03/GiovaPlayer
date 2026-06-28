@@ -8,37 +8,13 @@ class GiovaAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player = AudioPlayer();
 
   GiovaAudioHandler() {
-    _listenToPlayerState();
-    _listenToProcessingState();
-    _listenToCurrentPosition();
-    _listenToDuration();
-    _listenToSequenceState();
-  }
-
-  AudioPlayer get player => _player;
-
-  void _listenToPlayerState() {
     _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
-  }
-
-  void _listenToProcessingState() {
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
         _player.seek(Duration.zero);
         _player.pause();
       }
     });
-  }
-
-  void _listenToCurrentPosition() {
-    // Already handled by playbackEventStream
-  }
-
-  void _listenToDuration() {
-    // Already handled by playbackEventStream
-  }
-
-  void _listenToSequenceState() {
     _player.sequenceStateStream.listen((seqState) {
       if (seqState == null) return;
       final items = seqState.sequence.map((source) {
@@ -52,6 +28,8 @@ class GiovaAudioHandler extends BaseAudioHandler with SeekHandler {
       queue.add(items);
     });
   }
+
+  AudioPlayer get player => _player;
 
   PlaybackState _transformEvent(PlaybackEvent event) {
     return PlaybackState(
@@ -110,8 +88,10 @@ class GiovaAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> setSpeed(double speed) async => await _player.setSpeed(speed);
 
-  /// Set a playlist from file paths
+  /// Set a playlist from file paths and AUTO-PLAY
   Future<void> setPlaylist(List<String> paths, {int startIndex = 0}) async {
+    if (paths.isEmpty) return;
+
     final sources = paths.map((path) {
       final name = p.basenameWithoutExtension(path);
       String artist = '';
@@ -134,6 +114,7 @@ class GiovaAudioHandler extends BaseAudioHandler with SeekHandler {
 
     final playlist = ConcatenatingAudioSource(children: sources);
     await _player.setAudioSource(playlist, initialIndex: startIndex);
+    await _player.play(); // AUTO-PLAY — fixes BUG-01
   }
 
   /// Play a single file
@@ -158,8 +139,29 @@ class GiovaAudioHandler extends BaseAudioHandler with SeekHandler {
     await _player.play();
   }
 
+  /// Insert a track to play next (after current position)
+  Future<void> playNext(String path) async {
+    final source = _player.audioSource;
+    if (source is! ConcatenatingAudioSource) return;
+    final name = p.basenameWithoutExtension(path);
+    String artist = '';
+    String title = name;
+    if (name.contains(' - ')) {
+      final parts = name.split(' - ');
+      artist = parts[0].trim();
+      title = parts.sublist(1).join(' - ').trim();
+    }
+    final newSource = AudioSource.file(path, tag: MediaItem(id: path, title: title, artist: artist));
+    final currentIndex = _player.currentIndex ?? 0;
+    await source.insert(currentIndex + 1, newSource);
+  }
+
   @override
   Future<void> onTaskRemoved() async {
-    await stop();
+    // Keep playing in background when app is swiped away
+    // Only stop if paused
+    if (!_player.playing) {
+      await stop();
+    }
   }
 }

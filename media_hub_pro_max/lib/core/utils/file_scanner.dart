@@ -24,7 +24,6 @@ class MediaFile {
   }
 
   String get artistDisplay => (artist != null && artist!.isNotEmpty) ? artist! : 'Artiste inconnu';
-  String get folderName => path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.'));
 
   String get sizeFormatted {
     if (size < 1024) return '$size B';
@@ -55,8 +54,9 @@ class FileScanner {
     if (s.isGranted) return true;
     s = await Permission.manageExternalStorage.request();
     if (s.isGranted) return true;
+    // Accept partial grants — don't require ALL three
     final r = await [Permission.audio, Permission.videos, Permission.photos].request();
-    if (r.values.every((p) => p.isGranted)) return true;
+    if (r.values.any((p) => p.isGranted)) return true;
     s = await Permission.storage.request();
     if (s.isGranted) return true;
     if (s.isPermanentlyDenied) await openAppSettings();
@@ -65,6 +65,15 @@ class FileScanner {
 
   Future<void> scanAll() async {
     if (_hasScanned) return;
+    await _doScan();
+  }
+
+  Future<void> forceRescan() async {
+    _hasScanned = false;
+    await _doScan();
+  }
+
+  Future<void> _doScan() async {
     _scannedPaths.clear(); _audioFiles = []; _videoFiles = []; _imageFiles = [];
     if (!Platform.isAndroid) return;
     try {
@@ -76,8 +85,6 @@ class FileScanner {
     _imageFiles.sort((a, b) => b.modified.compareTo(a.modified));
     _hasScanned = true;
   }
-
-  Future<void> forceRescan() async { _hasScanned = false; await scanAll(); }
 
   Future<void> _scanDir(Directory dir, int depth) async {
     if (depth <= 0) return;
@@ -98,7 +105,7 @@ class FileScanner {
     if (_scannedPaths.contains(path)) return;
     _scannedPaths.add(path);
     final di = path.lastIndexOf('.');
-    if (di == -1 || di < path.length - 6) return;
+    if (di == -1) return;
     final ext = path.substring(di).toLowerCase();
     String? type;
     if (_audioExts.contains(ext)) type = 'audio';
@@ -123,6 +130,32 @@ class FileScanner {
 }
 
 final fileScannerProvider = Provider<FileScanner>((ref) => FileScanner());
-final audioFilesProvider = FutureProvider<List<MediaFile>>((ref) async { final s = ref.watch(fileScannerProvider); await s.requestPermissions(); await s.scanAll(); return s.audioFiles; });
-final videoFilesProvider = FutureProvider<List<MediaFile>>((ref) async { final s = ref.watch(fileScannerProvider); await s.requestPermissions(); await s.scanAll(); return s.videoFiles; });
-final imageFilesProvider = FutureProvider<List<MediaFile>>((ref) async { final s = ref.watch(fileScannerProvider); await s.requestPermissions(); await s.scanAll(); return s.imageFiles; });
+
+// Use AsyncNotifierProvider so refresh actually rescans (fixes BUG-03)
+final audioFilesProvider = FutureProvider<List<MediaFile>>((ref) async {
+  final s = ref.watch(fileScannerProvider);
+  await s.requestPermissions();
+  await s.scanAll();
+  return s.audioFiles;
+});
+final videoFilesProvider = FutureProvider<List<MediaFile>>((ref) async {
+  final s = ref.watch(fileScannerProvider);
+  await s.requestPermissions();
+  await s.scanAll();
+  return s.videoFiles;
+});
+final imageFilesProvider = FutureProvider<List<MediaFile>>((ref) async {
+  final s = ref.watch(fileScannerProvider);
+  await s.requestPermissions();
+  await s.scanAll();
+  return s.imageFiles;
+});
+
+/// Force a full rescan — call this from refresh buttons
+Future<void> forceRescanAll(WidgetRef ref) async {
+  final s = ref.read(fileScannerProvider);
+  await s.forceRescan();
+  ref.invalidate(audioFilesProvider);
+  ref.invalidate(videoFilesProvider);
+  ref.invalidate(imageFilesProvider);
+}
