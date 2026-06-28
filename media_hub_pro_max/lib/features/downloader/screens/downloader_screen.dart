@@ -99,7 +99,7 @@ class _DownloaderScreenState extends State<DownloaderScreen> with TickerProvider
 
   Widget _inProgressTab(ColorScheme cs) {
     if (_activeTasks.isEmpty) {
-      return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.cloud_download, size: 64, color: Colors.grey), SizedBox(height: 16), Text('Aucun téléchargement en cours')]);
+      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.cloud_download, size: 64, color: Colors.grey[400]), const SizedBox(height: 16), const Text('Aucun téléchargement en cours')]));
     }
     return ListView.builder(itemCount: _activeTasks.length, itemBuilder: (_, i) {
       final task = _activeTasks[i];

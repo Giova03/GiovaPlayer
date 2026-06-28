@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/material.dart' show Color;
 
 /// Security utilities: hashing, password strength, file encryption.
 class SecurityUtils {
@@ -156,6 +157,3 @@ class KeyPair {
   final String publicKey;
   KeyPair({required this.privateKey, required this.publicKey});
 }
-
-// Re-export Color from material for the PasswordStrength
-import 'package:flutter/material.dart' show Color;
