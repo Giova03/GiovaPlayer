@@ -1,21 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:audio_service/audio_service.dart';
 import '../services/audio_handler.dart';
 import '../utils/file_scanner.dart';
 
-// Audio handler (background service) — eagerly initialized in main()
-final audioHandlerProvider = FutureProvider<GiovaAudioHandler>((ref) async {
-  return await AudioService.init(
-    builder: () => GiovaAudioHandler(),
-    config: const AudioServiceConfig(
-      androidNotificationChannelId: 'com.giovaplayer.giova_player.audio',
-      androidNotificationChannelName: 'GiovaPlayer Audio',
-      androidNotificationChannelDescription: 'Lecture audio en arrière-plan',
-      androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
-      androidNotificationIcon: 'mipmap/ic_launcher',
-    ),
-  );
+// Audio handler — singleton, no async init needed
+final audioHandlerProvider = Provider<AudioHandler>((ref) {
+  final handler = AudioHandler.instance;
+  ref.onDispose(() {
+    // Don't dispose the singleton — it lives for the app's lifetime
+  });
+  return handler;
 });
 
 // Current audio file (for mini-player)

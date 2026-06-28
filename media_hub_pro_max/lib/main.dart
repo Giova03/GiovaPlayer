@@ -12,9 +12,8 @@ void main() {
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
 
-  // DO NOT eagerly init audio handler here — audio_service requires the
-  // Activity's FlutterEngine which only exists after runApp().
-  // The handler is lazily initialized on first use with proper error handling.
+  // Audio handler is a simple singleton (AudioHandler.instance) — no init needed.
+  // just_audio works without audio_service, 100% reliable.
   runZonedGuarded(() {
     runApp(const ProviderScope(child: GiovaPlayerApp()));
   }, (error, stack) {
